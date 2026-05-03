@@ -36,6 +36,6 @@
 	streamlit run leo1_v2y.py
  	  	** Geliştirici **
 	  	Tez Öğrencisi: Altay ÇAVUŞ
-			Gözlemci Akademisyen: Doç. Dr. BURCU ÖZKARDEŞ
-		  Uzay Bilimleri ve Teknolojileri Bölümü - 4. Sınıf Öğrencisi
+		Gözlemci Akademisyen: Doç. Dr. BURCU ÖZKARDEŞ
+		Uzay Bilimleri ve Teknolojileri Bölümü - 4. Sınıf Öğrencisi
 	( Not: Bu araç eğitim ve akademik araştırma amaçlıdır. Operasyonel görev kararları için resmi kurum (NASA, ESA, 18th SDS) verileri esas alınmalıdır. )
