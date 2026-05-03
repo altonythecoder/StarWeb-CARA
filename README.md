@@ -11,12 +11,12 @@ Bu proje, Alçak Dünya Yörüngesi'ndeki (LEO) uyduların çarpışma risklerin
 Sistem, modern yörünge mekaniği prensiplerini ve endüstri standardı olan algoritmaları kullanarak şu özellikleri sunar:
 
 *   **Canlı Veri Entegrasyonu:** Space-Track API üzerinden Starlink, ISS ve OneWeb gibi güncel uydu kümelerinin TLE verilerini anlık olarak çeker.
-*   **Yörünge Propagasyonu:** SGP4 ve SDP4 modellerini (Skyfield) kullanarak yüksek hassasiyetli konum ve hız tahmini yapar[cite: 1].
-*   **Gelişmiş Filtreleme:** $O(N^2)$ hesaplama yükünü azaltmak için **Apsis (Apoje-Perije) Filtresi** uygulayarak fiziksel olarak imkansız çarpışmaları eler[cite: 1].
-*   **Çarpışma Olasılığı ($P_c$):** Foster & Estes (1992) 2D-Pc ve Chan (1997) izotropik modelleri ile risk hesaplar[cite: 1].
-*   **Teşhis Araçları:** Mahalanobis Mesafesi testi ile 2D modellerin geçerliliğini denetler ve **Olasılık Seyrelmesi (Probability Dilution)** tespiti yapar[cite: 1].
-*   **Kinetik Enerji Analizi:** Olası bir çarpışmanın sonucunu ($E_c$ - J/g) ve Kessler Sendromu katkısını değerlendirir[cite: 1].
-*   **Görselleştirme:** Dinamik 3B yörünge animasyonları, zemin izi (ground track) haritaları ve risk gösterge panelleri içerir[cite: 1].
+*   **Yörünge Propagasyonu:** SGP4 ve SDP4 modellerini (Skyfield) kullanarak yüksek hassasiyetli konum ve hız tahmini yapar.
+*   **Gelişmiş Filtreleme:** $O(N^2)$ hesaplama yükünü azaltmak için **Apsis (Apoje-Perije) Filtresi** uygulayarak fiziksel olarak imkansız çarpışmaları eler.
+*   **Çarpışma Olasılığı ($P_c$):** Foster & Estes (1992) 2D-Pc ve Chan (1997) izotropik modelleri ile risk hesaplar.
+*   **Teşhis Araçları:** Mahalanobis Mesafesi testi ile 2D modellerin geçerliliğini denetler ve **Olasılık Seyrelmesi (Probability Dilution)** tespiti yapar.
+*   **Kinetik Enerji Analizi:** Olası bir çarpışmanın sonucunu ($E_c$ - J/g) ve Kessler Sendromu katkısını değerlendirir.
+*   **Görselleştirme:** Dinamik 3B yörünge animasyonları, zemin izi (ground track) haritaları ve risk gösterge panelleri içerir.
 
 ---
 
@@ -24,10 +24,10 @@ Sistem, modern yörünge mekaniği prensiplerini ve endüstri standardı olan al
 
 Proje, operasyonel uzay güvenliği (Space Situational Awareness - SSA) standartlarını takip eder:
 
-1.  **Veri Toplama:** Space-Track GP (General Perturbations) veri tabanı[cite: 1].
-2.  **Kaba Tarama:** Apsis filtresi ve 5 dakikalık zaman adımlarıyla TCA (Time of Closest Approach) tespiti[cite: 1].
-3.  **Risk Sınıflandırması:** NASA STD-8719.14 standardına göre risk seviyelendirmesi (Kritik, Yüksek, Orta, Düşük)[cite: 1].
-4.  **En Kötü Senaryo:** Kovaryans belirsizliğine karşı Max-Pc analizi[cite: 1].
+1.  **Veri Toplama:** Space-Track GP (General Perturbations) veri tabanı.
+2.  **Kaba Tarama:** Apsis filtresi ve 5 dakikalık zaman adımlarıyla TCA (Time of Closest Approach) tespiti.
+3.  **Risk Sınıflandırması:** NASA STD-8719.14 standardına göre risk seviyelendirmesi (Kritik, Yüksek, Orta, Düşük)].
+4.  **En Kötü Senaryo:** Kovaryans belirsizliğine karşı Max-Pc analizi.
 
 ---
 
