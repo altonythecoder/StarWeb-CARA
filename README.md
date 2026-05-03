@@ -1,6 +1,6 @@
 # LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](BURAYA_KOPYALADIGIN_LINKI_YAPISTIR)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://altonythecoder-leouyducarpismaanalizi-leocarpsma-jv1r2h.streamlit.app/)
 
 # LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
 
