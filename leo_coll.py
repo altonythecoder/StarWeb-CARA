@@ -17,7 +17,7 @@ import math
 ts = load.timescale()
 
 # ================================================================================
-#  CSS — MISSION CONTROL DARK THEME
+#  CSS — GÖREV KONTROL KARANLIK TEMASI
 # ================================================================================
 STYLE = """
 <style>
@@ -73,7 +73,7 @@ header[data-testid="stHeader"]{display:none !important;}
 """
 
 # ================================================================================
-#  EARTH TEXTURE
+#  DÜNYA GÖRÜNÜMÜ
 # ================================================================================
 @st.cache_data(show_spinner=False)
 def load_earth_texture(resolution: int = 270):
@@ -893,7 +893,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 # ================================================================================
 #  ARAYÜZ
 # ================================================================================
-st.set_page_config(page_title="LEO Yakinsama Analiz Sistemi", page_icon="S", layout="wide",
+st.set_page_config(page_title="LEO Yaknnsama Analiz Sistemi", page_icon="S", layout="wide",
                    initial_sidebar_state="expanded")
 st.markdown(STYLE, unsafe_allow_html=True)
 
@@ -901,11 +901,11 @@ st.markdown("""
 <div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
   <div style="font-family:'Space Mono',monospace; font-size:.68rem;
               color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    LEO UYDULARININ ÇARPIŞMA ANALIZI SISTEMI (starlink/iss/oneweb)
+    LEO UYDULARININ ÇARPIŞMA ANALİZİ SİSTEMİ (starlink/iss/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
-    Alcak Dunya Yorungesinde<br>
-    <span style="color:#00c8ff;">Yakinsama Analizi &amp; Carpısma Riski Simulasyonu</span>
+    Alcak Dünya Yörüngesinde<br>
+    <span style="color:#00c8ff;">Yakınsama Analizi &amp; Carpışma Riski Simulasyonu</span>
   </h1>
   <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
               color:#4a6880; margin-top:6px; letter-spacing:.05em;">
