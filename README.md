@@ -1,4 +1,4 @@
-# LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
+# Streamlit APP
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://altonythecoder-leouyducarpismaanalizi-leocarpsma-jv1r2h.streamlit.app/)
 
