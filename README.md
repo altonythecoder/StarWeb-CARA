@@ -1,4 +1,4 @@
-# 🚀 LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
+# LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
 
 Bu proje, Alçak Dünya Yörüngesi'ndeki (LEO) uyduların çarpışma risklerini analiz etmek, yakınsama (conjunction) olaylarını tespit etmek ve bu kritik anları 3 boyutlu olarak simüle etmek için geliştirilmiş kapsamlı bir **Uzay Bilimleri** aracıdır.
 
@@ -6,7 +6,7 @@ Bu proje, Alçak Dünya Yörüngesi'ndeki (LEO) uyduların çarpışma risklerin
 
 ---
 
-## 🛰️ Temel Özellikler
+## Temel Özellikler
 
 Sistem, modern yörünge mekaniği prensiplerini ve endüstri standardı olan algoritmaları kullanarak şu özellikleri sunar:
 
@@ -20,7 +20,7 @@ Sistem, modern yörünge mekaniği prensiplerini ve endüstri standardı olan al
 
 ---
 
-## 📑 Metodoloji
+## Metodoloji
 
 Proje, operasyonel uzay güvenliği (Space Situational Awareness - SSA) standartlarını takip eder:
 
@@ -31,7 +31,7 @@ Proje, operasyonel uzay güvenliği (Space Situational Awareness - SSA) standart
 
 ---
 
-## 🛠️ Kurulum
+## Kurulum
 
 Projeyi yerel makinenizde çalıştırmak için:
 
@@ -54,15 +54,14 @@ Projeyi yerel makinenizde çalıştırmak için:
 
 ---
 
-## 👨‍💻 Proje Ekibi
+## Proje Ekibi:
 
 **Geliştirici / Tez Öğrencisi:**  
 Altay ÇAVUŞ  
-*Çanakkale Onsekiz Mart Üniversitesi, Uzay Bilimleri ve Teknolojileri Bölümü*
+*Çanakkale Onsekiz Mart Üniversitesi, Uzay Bilimleri ve Teknolojileri Bölümü, 4.Sınıf Öğrencisi*
 
 **Akademik Danışman:**  
-Doç. Dr. BURCU ÖZKARDEŞ  
-*Gözlemci Akademisyen*
+Doç. Dr. BURCU ÖZKARDEŞ
 
 ---
 > **Not:** Bu araç eğitim ve akademik araştırma amaçlıdır. Operasyonel görev kararları için resmi kurum (NASA, ESA, 18th SDS) verileri esas alınmalıdır.
