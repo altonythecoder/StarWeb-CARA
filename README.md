@@ -34,8 +34,8 @@ pip install -r requirements.txt
 3.Uygulamayı başlatın:
 streamlit run leo1_v2y.py
    ** Geliştirici **
-  Altay ÇAVUŞ
+  Tez Öğrencisi: Altay ÇAVUŞ
+  Gözlemci Akademisyen: Doç. Dr. BURCU ÖZKARDEŞ
   Çanakkale Onsekiz Mart Üniversitesi
   Uzay Bilimleri ve Teknolojileri Bölümü - 4. Sınıf Öğrencisi
-  Gözlemci Akademisyen: Doç. Dr. BURCU ÖZKARDEŞ
 ( Not: Bu araç eğitim ve akademik araştırma amaçlıdır. Operasyonel görev kararları için resmi kurum (NASA, ESA, 18th SDS) verileri esas alınmalıdır. )
