@@ -1,4 +1,4 @@
-[ ufak bir önerisi preview olarak değil de cod eolarak okursanız çok daha anlaşılır. ]
+[ ufak bir öneri preview olarak değil de cod eolarak okursanız çok daha anlaşılır. ]
 ** LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu ** 	
 	Bu proje, Alçak Dünya Yörüngesi'ndeki (LEO) uyduların çarpışma risklerini analiz etmek,
 	yakınsama (conjunction) olaylarını tespit etmek ve bu kritik anları 3 boyutlu olarak simüle etmek için geliştirilmiş kapsamlı bir Uzay Bilimleri aracıdır.
