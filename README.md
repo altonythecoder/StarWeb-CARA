@@ -1,5 +1,9 @@
 # LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](BURAYA_KOPYALADIGIN_LINKI_YAPISTIR)
+
+# LEO Uydu Yakınsama Analizi ve Çarpışma Riski Simülasyonu
+
 Bu proje, Alçak Dünya Yörüngesi'ndeki (LEO) uyduların çarpışma risklerini analiz etmek, yakınsama (conjunction) olaylarını tespit etmek ve bu kritik anları 3 boyutlu olarak simüle etmek için geliştirilmiş kapsamlı bir **Uzay Bilimleri** aracıdır.
 
 Çanakkale Onsekiz Mart Üniversitesi (ÇOMÜ), Uzay Bilimleri ve Teknolojileri Bölümü bünyesinde yürütülen **Bitirme Ödevi** kapsamında geliştirilmiştir.
