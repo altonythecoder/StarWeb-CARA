@@ -41,8 +41,8 @@ Projeyi yerel makinenizde çalıştırmak için:
 
 1.  **Depoyu klonlayın:**
     ```bash
-    git clone [https://github.com/altonthecoder/leo-collision-analysis.git](https://github.com/altonthecoder/leo-collision-analysis.git)
-    cd leo-collision-analysis
+    git clone [https://github.com/altonythecoder/leouyducarpismaanalizi](https://github.com/altonythecoder/leouyducarpismaanalizi)
+    cd leouyducarpismaanalizi
     ```
 
 2.  **Bağımlılıkları yükleyin:**
@@ -53,7 +53,7 @@ Projeyi yerel makinenizde çalıştırmak için:
 
 3.  **Uygulamayı başlatın:**
     ```bash
-    streamlit run leo1_v2y.py
+    streamlit run leocarpsma.py
     ```
 
 ---
