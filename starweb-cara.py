@@ -96,6 +96,31 @@ def load_earth_texture(resolution: int = 270):
                 img  = Image.open(BytesIO(resp.content)).convert("RGB")
                 W, H = resolution * 2, resolution
                 img  = img.resize((W, H), Image.LANCZOS)
+                
+                # Apply dark futuristic style transformations
+                # Convert to numpy array for processing
+                img_array = np.array(img)
+                
+                # Darken overall image for futuristic night look
+                img_array = img_array * 0.4
+                
+                # Enhance blue tones for deep oceans (boost blue channel)
+                img_array[:, :, 2] = np.clip(img_array[:, :, 2] * 1.4, 0, 255)
+                
+                # Add subtle cyan/teal tint for futuristic atmosphere
+                img_array[:, :, 1] = np.clip(img_array[:, :, 1] * 1.1, 0, 255)
+                
+                # Increase contrast for cinematic look
+                mean_val = np.mean(img_array)
+                img_array = np.clip((img_array - mean_val) * 1.3 + mean_val, 0, 255)
+                
+                # Add subtle atmospheric glow effect (brighten edges slightly)
+                img_array = np.clip(img_array + 15, 0, 255)
+                
+                # Convert back to uint8
+                img_array = img_array.astype(np.uint8)
+                img = Image.fromarray(img_array)
+                
                 imgq = img.quantize(colors=256)
                 pal  = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
                 idx  = np.flipud(np.array(imgq, dtype=float))
@@ -765,7 +790,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         fig.add_trace(go.Surface(
             x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
             showscale=False, opacity=1.0, hoverinfo="skip",
-            lightposition=dict(x=200000, y=80000, z=120000),
+            lightposition=dict(x=0, y=0, z=10000),
             lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
             name="Earth",
         ))
@@ -906,7 +931,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             traces.insert(0, go.Surface(
                 x=ex_rot, y=ey_rot, z=ez_rot, surfacecolor=sc, colorscale=cs,
                 showscale=False, opacity=1.0, hoverinfo="skip",
-                lightposition=dict(x=200000, y=80000, z=120000),
+                lightposition=dict(x=0, y=0, z=10000),
                 lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
                 name="Earth",
             ))
