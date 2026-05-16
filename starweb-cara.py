@@ -744,6 +744,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
     fig = go.Figure()
 
     earth = load_earth_texture(200)
+    x, y, z = None, None, None
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(go.Surface(
