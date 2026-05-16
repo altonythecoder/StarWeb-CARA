@@ -849,8 +849,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
-            surfacecolor=surface_color, colorscale=colorscale_earth, opacity=0.95, showscale=False,
-            lighting=dict(ambient=0.4, diffuse=0.8, specular=0.2, roughness=0.5),
+            colorscale=colorscale_earth, opacity=0.95, showscale=False,
             name="Earth"))
     
     # Add latitude/longitude grid lines
