@@ -1,4 +1,22 @@
-# LEO Satellite Collision Analysis System
+## 🎓 Academic Context & Credits
+
+### Why This Project Was Developed
+[cite_start]This system was developed as a **Graduation Project** for the **Space Sciences and Technologies** department[cite: 37, 48]. [cite_start]With the exponential rise of low Earth orbit (LEO) satellite deployments, monitoring and mitigating orbital debris risks has become a critical challenge for modern space safety[cite: 2, 23]. 
+
+[cite_start]The primary objective of this project is to implement, evaluate, and visualize industry-standard conjunction assessment risk analysis (CARA) methodologies—specifically focusing on the operational collision risks posed by modern megaconstellations such as Starlink and OneWeb[cite: 2, 3, 38].
+
+### 👥 Project Team
+
+* **Author:** [Altay ÇAVUŞ]
+    * [cite_start]**Role:** Lead Developer & Researcher [cite: 43]
+    * **Department:** Space Sciences and Technologies
+    * [cite_start]**Contact:** [altaycavuss@gmail.com] [cite: 25, 47]
+
+* **Academic Advisor:** [Assoc. Prof. BURCU ÖZKARDEŞ]
+    * [cite_start]**Role:** Project Supervisor / Consultant [cite: 43]
+    * **Affiliation:** Department of Space Sciences and Technologies
+
+# StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations
 
 A comprehensive Streamlit-based web application for analyzing conjunction events and collision risks in Low Earth Orbit (LEO). This system implements industry-standard algorithms for satellite collision probability assessment, including multiple Pc models, fragmentation analysis, and real-time 3D visualization.
 
