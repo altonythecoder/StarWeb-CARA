@@ -83,7 +83,8 @@ def load_earth_texture(resolution: int = 270):
                "c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg")
                
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=20)
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
         
         img  = Image.open(BytesIO(resp.content)).convert("RGB")
         W, H = resolution * 2, resolution
@@ -101,7 +102,8 @@ def load_earth_texture(resolution: int = 270):
         y = R * np.cos(lat_g) * np.sin(lon_g)
         z = R * np.sin(lat_g)
         return x, y, z, surf_color, colorscale
-    except Exception:
+    except Exception as e:
+        st.sidebar.warning(f"Earth texture load failed: {str(e)[:50]}")
         return None
 
 # ================================================================================
@@ -755,21 +757,34 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             name="Earth",
         ))
     else:
+        # Professional fallback Earth with gradient colors
         r = 6371.0
-        u, v = np.mgrid[0:2*np.pi:40j, 0:np.pi:20j]
+        u, v = np.mgrid[0:2*np.pi:60j, 0:np.pi:30j]
+        # Create a more realistic Earth-like colorscale
+        colorscale_earth = [
+            [0.0, "#1a3a5c"],    # Deep ocean
+            [0.3, "#2d5a7b"],    # Ocean
+            [0.5, "#3d7a9c"],    # Shallow water
+            [0.7, "#4a8a2a"],    # Land green
+            [0.85, "#8a7a4a"],   # Brown/mountains
+            [1.0, "#ffffff"],    # Ice caps
+        ]
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
-            colorscale="Blues", opacity=0.4, showscale=False))
+            colorscale=colorscale_earth, opacity=0.85, showscale=False,
+            lighting=dict(ambient=0.4, diffuse=0.8, specular=0.1, roughness=0.7, fresnel=0.2),
+            lightposition=dict(x=200000, y=80000, z=120000),
+            name="Earth"))
 
-    # Full orbit paths (faint, static)
+    # Full orbit paths (faint, static) - index 0 and 1
     fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
         line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" orbit",
-        showlegend=False))
+        showlegend=False, visible=True))
     fig.add_trace(go.Scatter3d(x=orb_b[0], y=orb_b[1], z=orb_b[2], mode="lines",
         line=dict(color="rgba(255,107,0,0.12)", width=1.5), name=sat_b.name+" orbit",
-        showlegend=False))
+        showlegend=False, visible=True))
 
-    # TCA point (static red marker)
+    # TCA point (static red marker) - index 2
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
     fig.add_trace(go.Scatter3d(
         x=[mid_tca[0]], y=[mid_tca[1]], z=[mid_tca[2]],
@@ -779,6 +794,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
         text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
         textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
         name="TCA Point",
+        visible=True,
     ))
 
     n_static = len(fig.data)  # static trace count — dynamic traces after this
@@ -889,33 +905,51 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
             aspectmode="cube",
             camera=dict(eye=dict(x=1.7, y=1.7, z=0.75), up=dict(x=0,y=0,z=1)),
+            dragmode="orbit",  # Enable camera control
         ),
         legend=dict(font=dict(size=8, family="Space Mono"),
                     bgcolor="rgba(0,4,8,.85)", bordercolor="#1a2740", borderwidth=1,
                     x=0.01, y=0.92, itemsizing="constant"),
-        updatemenus=[dict(
-            type="buttons", showactive=False,
-            bgcolor="#0c1018", bordercolor="#1a2740",
-            font=dict(family="Space Mono", size=8, color="#b8cfe0"),
-            y=1.02, x=0.5, xanchor="center", pad=dict(r=4),
-            direction="left",
-            buttons=[
-                dict(label="▶ PLAY", method="animate",
-                     args=[None, dict(frame=dict(duration=80, redraw=True),
-                                     fromcurrent=True, mode="immediate")]),
-                dict(label="⏸ STOP", method="animate",
-                     args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
-                dict(label="⏩ 2×", method="animate",
-                     args=[None, dict(frame=dict(duration=40, redraw=True),
-                                     fromcurrent=True, mode="immediate")]),
-                dict(label="⏩⏩ 5×", method="animate",
-                     args=[None, dict(frame=dict(duration=15, redraw=True),
-                                     fromcurrent=True, mode="immediate")]),
-                dict(label="⏮ JUMP TO TCA", method="animate",
-                     args=[[str(tca_idx)],
-                           dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
-            ],
-        )],
+        updatemenus=[
+            dict(
+                type="buttons", showactive=False,
+                bgcolor="#0c1018", bordercolor="#1a2740",
+                font=dict(family="Space Mono", size=8, color="#b8cfe0"),
+                y=1.02, x=0.35, xanchor="center", pad=dict(r=4),
+                direction="left",
+                buttons=[
+                    dict(label="▶ PLAY", method="animate",
+                         args=[None, dict(frame=dict(duration=80, redraw=True),
+                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
+                    dict(label="⏸ STOP", method="animate",
+                         args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
+                    dict(label="⏩ 2×", method="animate",
+                         args=[None, dict(frame=dict(duration=40, redraw=True),
+                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
+                    dict(label="⏩⏩ 5×", method="animate",
+                         args=[None, dict(frame=dict(duration=16, redraw=True),
+                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
+                ],
+            ),
+            dict(
+                type="buttons", showactive=False,
+                bgcolor="#0c1018", bordercolor="#1a2740",
+                font=dict(family="Space Mono", size=8, color="#b8cfe0"),
+                y=1.02, x=0.65, xanchor="center", pad=dict(r=4),
+                direction="left",
+                buttons=[
+                    dict(label="⏮ JUMP TO TCA", method="animate",
+                         args=[[str(tca_idx)],
+                               dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
+                    dict(label="🌍 ORBITS", method="restyle",
+                         args=[{"visible": [True, True, True, True, True, True, True, True]}],
+                         args2=[{"visible": [True, True, True, True, True, True, False, False]}]),
+                    dict(label="📍 TCA", method="restyle",
+                         args=[{"visible": [True, True, True, True, True, True, True, True]}],
+                         args2=[{"visible": [True, True, False, True, True, True, True, True]}]),
+                ],
+            ),
+        ],
         sliders=[dict(
             steps=slider_steps, active=0,
             currentvalue=dict(prefix="⏱  ", font=dict(family="Space Mono",size=9,color="#4a6880")),
