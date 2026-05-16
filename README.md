@@ -7,12 +7,12 @@ The primary objective of this project is to implement, evaluate, and visualize i
 
 ### 👥 Project Team
 
-* **Author:** [Altay ÇAVUŞ]
+* **Author:** **Altay ÇAVUŞ**
     * **Role:** Lead Developer & Researcher 
     * **Department:** Space Sciences and Technologies
-    * **Contact:** [altaycavuss@gmail.com] 
+    * **Contact:** *altaycavuss@gmail.com* 
 
-* **Academic Advisor:** [Assoc. Prof. BURCU ÖZKARDEŞ]
+* **Academic Advisor:** **Assoc. Prof. BURCU ÖZKARDEŞ**
     * **Role:** Project Supervisor / Consultant 
     * **Affiliation:** Department of Space Sciences and Technologies
 
