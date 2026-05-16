@@ -510,7 +510,7 @@ def fig_3d_orbits(sats):
         times = ts.tt_jd(now.tt + offsets)
         pos   = sat.at(times).position.km
         c     = colors[k % len(colors)]
-        fig.add_trace(go.Scatter3d(x=pos[0], y=pos[1], z=pos[2], mode="lines",
+        fig.add_trace(go.Scatter3d(x=pos[0].tolist(), y=pos[1].tolist(), z=pos[2].tolist(), mode="lines",
             line=dict(color=c, width=2.5), name=sat.name, opacity=0.95))
         p0 = sat.at(now).position.km
         fig.add_trace(go.Scatter3d(x=[p0[0]], y=[p0[1]], z=[p0[2]], mode="markers",
@@ -852,10 +852,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         ))
 
     # Full orbit paths (faint, static) - index 0 and 1
-    fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
+    fig.add_trace(go.Scatter3d(x=orb_a[0].tolist(), y=orb_a[1].tolist(), z=orb_a[2].tolist(), mode="lines",
         line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" orbit",
         showlegend=False, visible=show_orbits))
-    fig.add_trace(go.Scatter3d(x=orb_b[0], y=orb_b[1], z=orb_b[2], mode="lines",
+    fig.add_trace(go.Scatter3d(x=orb_b[0].tolist(), y=orb_b[1].tolist(), z=orb_b[2].tolist(), mode="lines",
         line=dict(color="rgba(255,107,0,0.12)", width=1.5), name=sat_b.name+" orbit",
         showlegend=False, visible=show_orbits))
 
@@ -899,10 +899,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         earth_angle = np.radians(time_hours * 15.0)  # 15 degrees per hour
         
         traces = [
-            go.Scatter3d(x=ta[0], y=ta[1], z=ta[2], mode="lines",
+            go.Scatter3d(x=ta[0].tolist(), y=ta[1].tolist(), z=ta[2].tolist(), mode="lines",
                 line=dict(color="#00c8ff", width=2.5),
                 name=sat_a.name, showlegend=False),
-            go.Scatter3d(x=tb[0], y=tb[1], z=tb[2], mode="lines",
+            go.Scatter3d(x=tb[0].tolist(), y=tb[1].tolist(), z=tb[2].tolist(), mode="lines",
                 line=dict(color="#ff6b00", width=2.5),
                 name=sat_b.name, showlegend=False),
             go.Scatter3d(x=[pos_a[0,i]], y=[pos_a[1,i]], z=[pos_a[2,i]],
