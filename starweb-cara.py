@@ -758,22 +758,68 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             name="Earth",
         ))
     else:
-        # Professional fallback Earth with gradient colors
+        # Professional fallback Earth with procedural continent patterns
         r = 6371.0
-        u, v = np.mgrid[0:2*np.pi:60j, 0:np.pi:30j]
-        # Create a more realistic Earth-like colorscale
+        u, v = np.mgrid[0:2*np.pi:100j, 0:np.pi:50j]
+        
+        # Create a surfacecolor array with continent-like patterns
+        # Use latitude-based coloring for ice caps and latitude bands
+        lat = np.pi/2 - v  # Convert v to latitude (0 at equator, pi/2 at poles)
+        
+        # Create a more realistic Earth surface color array
+        surface_color = np.zeros_like(lat)
+        
+        # Ice caps (high latitudes)
+        ice_mask = np.abs(lat) > np.pi/2.5
+        surface_color[ice_mask] = 0.95
+        
+        # Ocean (default)
+        surface_color[~ice_mask] = 0.25
+        
+        # Add some continent-like bands based on longitude and latitude
+        # This creates approximate continent shapes
+        for i in range(len(lat.flat)):
+            lat_val = lat.flat[i]
+            lon_val = u.flat[i]
+            
+            # Skip if already ice
+            if abs(lat_val) > np.pi/2.5:
+                continue
+            
+            # Create continent-like patterns using sine waves
+            continent_noise = (np.sin(3*lon_val) * np.cos(2*lat_val) + 
+                              np.sin(5*lon_val + 1) * np.cos(3*lat_val) +
+                              np.sin(7*lon_val + 2) * 0.5)
+            
+            # Land areas
+            if continent_noise > 0.3:
+                # Vary by latitude for different biomes
+                if abs(lat_val) < np.pi/6:  # Tropical
+                    surface_color.flat[i] = 0.55  # Green
+                elif abs(lat_val) < np.pi/3:  # Temperate
+                    surface_color.flat[i] = 0.65  # Forest green
+                else:  # Polar/temperate transition
+                    surface_color.flat[i] = 0.75  # Brown/green mix
+        
+        # Create colorscale
         colorscale_earth = [
-            [0.0, "#1a3a5c"],    # Deep ocean
-            [0.3, "#2d5a7b"],    # Ocean
-            [0.5, "#3d7a9c"],    # Shallow water
-            [0.7, "#4a8a2a"],    # Land green
-            [0.85, "#8a7a4a"],   # Brown/mountains
-            [1.0, "#ffffff"],    # Ice caps
+            [0.0, "#0a1a2c"],    # Deep ocean
+            [0.2, "#1a3a5c"],   # Ocean
+            [0.35, "#2d5a7b"],  # Shallow water
+            [0.5, "#3d7a9c"],   # Coastal water
+            [0.55, "#4a8a2a"],  # Tropical land
+            [0.65, "#5a9a3a"],  # Forest
+            [0.75, "#8a7a4a"],  # Mountains
+            [0.85, "#9a8a5a"],  # High mountains
+            [0.92, "#c0c8d0"],  # Snow line
+            [0.98, "#e0e8f0"],  # Ice
+            [1.0, "#ffffff"],   # Pure ice
         ]
+        
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
-            colorscale=colorscale_earth, opacity=0.85, showscale=False,
-            lighting=dict(ambient=0.4, diffuse=0.8, specular=0.1, roughness=0.7, fresnel=0.2),
+            surfacecolor=surface_color, colorscale=colorscale_earth, opacity=0.9, showscale=False,
+            lighting=dict(ambient=0.35, diffuse=0.85, specular=0.2, roughness=0.5, fresnel=0.2),
             name="Earth"))
 
     # Full orbit paths (faint, static) - index 0 and 1
@@ -826,10 +872,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         traces = [
             go.Scatter3d(x=ta[0], y=ta[1], z=ta[2], mode="lines",
                 line=dict(color="#00c8ff", width=2.5),
-                name=sat_a.name, showlegend=True),
+                name=sat_a.name, showlegend=False),
             go.Scatter3d(x=tb[0], y=tb[1], z=tb[2], mode="lines",
                 line=dict(color="#ff6b00", width=2.5),
-                name=sat_b.name, showlegend=True),
+                name=sat_b.name, showlegend=False),
             go.Scatter3d(x=[pos_a[0,i]], y=[pos_a[1,i]], z=[pos_a[2,i]],
                 mode="markers",
                 marker=dict(color="#00c8ff", size=9, line=dict(color="#fff",width=1)),
@@ -922,12 +968,6 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
                                          fromcurrent=True, mode="immediate")]),
                     dict(label="⏸ STOP", method="animate",
                          args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
-                    dict(label="⏩ 2×", method="animate",
-                         args=[None, dict(frame=dict(duration=40, redraw=True),
-                                         fromcurrent=True, mode="immediate")]),
-                    dict(label="⏩⏩ 5×", method="animate",
-                         args=[None, dict(frame=dict(duration=16, redraw=True),
-                                         fromcurrent=True, mode="immediate")]),
                     dict(label="⏮ JUMP TO TCA", method="animate",
                          args=[[str(tca_idx)],
                                dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
@@ -1437,6 +1477,7 @@ with tab4:
             with tc4: st.metric("Risk", sev_sim)
 
             # 3D animation
+            st.info("ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view.")
             st.plotly_chart(anim_fig, use_container_width=True)
 
             # Distance profile (static)
