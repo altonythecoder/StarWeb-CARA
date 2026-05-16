@@ -770,81 +770,23 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             name="Earth",
         ))
     else:
-        # Professional fallback Earth with procedural continent patterns
+        # Simple fallback Earth with gradient colors
         r = 6371.0
         u, v = np.mgrid[0:2*np.pi:120j, 0:np.pi:60j]
         
-        # Create a surfacecolor array with continent-like patterns
-        # Use latitude-based coloring for ice caps and latitude bands
-        lat = np.pi/2 - v  # Convert v to latitude (0 at equator, pi/2 at poles)
+        # Use z values for coloring (latitude-based)
+        z_vals = r * np.cos(v)
         
-        # Create a more realistic Earth surface color array
-        surface_color = np.zeros_like(lat)
-        
-        # Ice caps (high latitudes) - more gradual transition
-        ice_mask = np.abs(lat) > np.pi/2.4
-        ice_transition = (np.abs(lat) > np.pi/2.6) & (np.abs(lat) <= np.pi/2.4)
-        surface_color[ice_mask] = 0.97
-        surface_color[ice_transition] = 0.85
-        
-        # Ocean (default) - vary by latitude for realism
-        ocean_deep = np.abs(lat) > np.pi/3
-        surface_color[~ice_mask & ~ice_transition & ocean_deep] = 0.22
-        surface_color[~ice_mask & ~ice_transition & ~ocean_deep] = 0.28
-        
-        # Add continent-like patterns using multiple sine wave layers
-        for i in range(len(lat.flat)):
-            lat_val = lat.flat[i]
-            lon_val = u.flat[i]
-            
-            # Skip if already ice
-            if abs(lat_val) > np.pi/2.4:
-                continue
-            
-            # Create more complex continent patterns
-            continent_noise = (
-                np.sin(2.5*lon_val) * np.cos(1.5*lat_val) * 1.0 +
-                np.sin(4*lon_val + 0.5) * np.cos(2.5*lat_val) * 0.8 +
-                np.sin(6*lon_val + 1.2) * np.cos(1.8*lat_val) * 0.6 +
-                np.sin(3*lon_val - 0.8) * np.cos(3.2*lat_val) * 0.5
-            )
-            
-            # Add some randomness for texture
-            continent_noise += np.random.normal(0, 0.1)
-            
-            # Land areas with more detail
-            if continent_noise > 0.4:
-                # Vary by latitude for different biomes
-                if abs(lat_val) < np.pi/8:  # Tropical/equatorial
-                    surface_color.flat[i] = 0.52  # Lush green
-                elif abs(lat_val) < np.pi/4:  # Subtropical
-                    surface_color.flat[i] = 0.58  # Green
-                elif abs(lat_val) < np.pi/2.8:  # Temperate
-                    surface_color.flat[i] = 0.62  # Forest green
-                elif abs(lat_val) < np.pi/2.5:  # Cold temperate
-                    surface_color.flat[i] = 0.72  # Brown/green
-                else:  # Tundra
-                    surface_color.flat[i] = 0.78  # Brown/gray
-            elif continent_noise > 0.2:
-                # Coastal areas
-                surface_color.flat[i] = 0.38  # Shallow water/coastal
-        
-        # Create improved colorscale matching reference images
+        # Create colorscale
         colorscale_earth = [
-            [0.0, "#081828"],    # Deep ocean
-            [0.15, "#0a2848"],   # Ocean
-            [0.28, "#1a3868"],  # Mid ocean
-            [0.38, "#2a4888"],  # Coastal water
-            [0.45, "#3a58a8"],  # Shallow coastal
-            [0.52, "#4a8a2a"],  # Tropical land
-            [0.58, "#5a9a3a"],  # Green
-            [0.62, "#6aaa4a"],  # Forest
-            [0.72, "#8a7a5a"],  # Temperate
-            [0.78, "#9a8a6a"],  # Tundra
-            [0.85, "#b0a080"],  # Mountains
-            [0.92, "#d0c0b0"],  # Snow line
-            [0.97, "#e8e8f0"],  # Ice
-            [1.0, "#ffffff"],   # Pure ice
+            [0.0, "#081828"],    # Deep ocean (south pole)
+            [0.2, "#0a2848"],   # Ocean
+            [0.35, "#1a3868"],  # Mid ocean
+            [0.5, "#2a4888"],   # Equatorial ocean
+            [0.65, "#2a4888"],  # Ocean
+            [0.8, "#1a3868"],   # Mid ocean
+            [0.9, "#d0c0b0"],   # Ice
+            [1.0, "#ffffff"],   # North pole ice
         ]
         
         fig.add_trace(go.Surface(
