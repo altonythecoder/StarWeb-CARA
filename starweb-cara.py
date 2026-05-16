@@ -79,29 +79,41 @@ header[data-testid="stHeader"]{display:none !important;}
 @st.cache_data(show_spinner=False)
 def load_earth_texture(resolution: int = 270):
     try:
-        url = ("https://upload.wikimedia.org/wikipedia/commons/thumb/"
-               "c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg")
-               
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
+        # Try multiple reliable Earth texture sources
+        urls = [
+            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg",
+            "https://upload.wikimedia.org/wikipedia/commons/2/23/Blue_Marble_2002.png",
+            "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg",
+        ]
         
-        img  = Image.open(BytesIO(resp.content)).convert("RGB")
-        W, H = resolution * 2, resolution
-        img  = img.resize((W, H), Image.LANCZOS)
-        imgq = img.quantize(colors=256)
-        pal  = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
-        idx  = np.flipud(np.array(imgq, dtype=float))
-        surf_color = idx / 255.0
-        colorscale = [[i / 255.0, f"rgb({pal[i,0]},{pal[i,1]},{pal[i,2]})"] for i in range(256)]
-        lat = np.linspace(np.pi / 2, -np.pi / 2, H)
-        lon = np.linspace(-np.pi, np.pi, W)
-        lon_g, lat_g = np.meshgrid(lon, lat)
-        R = 6371.0
-        x = R * np.cos(lat_g) * np.cos(lon_g)
-        y = R * np.cos(lat_g) * np.sin(lon_g)
-        z = R * np.sin(lat_g)
-        return x, y, z, surf_color, colorscale
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        
+        for url in urls:
+            try:
+                resp = requests.get(url, headers=headers, timeout=45)
+                resp.raise_for_status()
+                
+                img  = Image.open(BytesIO(resp.content)).convert("RGB")
+                W, H = resolution * 2, resolution
+                img  = img.resize((W, H), Image.LANCZOS)
+                imgq = img.quantize(colors=256)
+                pal  = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
+                idx  = np.flipud(np.array(imgq, dtype=float))
+                surf_color = idx / 255.0
+                colorscale = [[i / 255.0, f"rgb({pal[i,0]},{pal[i,1]},{pal[i,2]})"] for i in range(256)]
+                lat = np.linspace(np.pi / 2, -np.pi / 2, H)
+                lon = np.linspace(-np.pi, np.pi, W)
+                lon_g, lat_g = np.meshgrid(lon, lat)
+                R = 6371.0
+                x = R * np.cos(lat_g) * np.cos(lon_g)
+                y = R * np.cos(lat_g) * np.sin(lon_g)
+                z = R * np.sin(lat_g)
+                return x, y, z, surf_color, colorscale
+            except Exception:
+                continue
+        
+        # If all URLs fail, return None to use procedural fallback
+        return None
     except Exception as e:
         st.sidebar.warning(f"Earth texture load failed: {str(e)[:50]}")
         return None
@@ -760,7 +772,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     else:
         # Professional fallback Earth with procedural continent patterns
         r = 6371.0
-        u, v = np.mgrid[0:2*np.pi:100j, 0:np.pi:50j]
+        u, v = np.mgrid[0:2*np.pi:120j, 0:np.pi:60j]
         
         # Create a surfacecolor array with continent-like patterns
         # Use latitude-based coloring for ice caps and latitude bands
@@ -769,58 +781,109 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         # Create a more realistic Earth surface color array
         surface_color = np.zeros_like(lat)
         
-        # Ice caps (high latitudes)
-        ice_mask = np.abs(lat) > np.pi/2.5
-        surface_color[ice_mask] = 0.95
+        # Ice caps (high latitudes) - more gradual transition
+        ice_mask = np.abs(lat) > np.pi/2.4
+        ice_transition = (np.abs(lat) > np.pi/2.6) & (np.abs(lat) <= np.pi/2.4)
+        surface_color[ice_mask] = 0.97
+        surface_color[ice_transition] = 0.85
         
-        # Ocean (default)
-        surface_color[~ice_mask] = 0.25
+        # Ocean (default) - vary by latitude for realism
+        ocean_deep = np.abs(lat) > np.pi/3
+        surface_color[~ice_mask & ~ice_transition & ocean_deep] = 0.22
+        surface_color[~ice_mask & ~ice_transition & ~ocean_deep] = 0.28
         
-        # Add some continent-like bands based on longitude and latitude
-        # This creates approximate continent shapes
+        # Add continent-like patterns using multiple sine wave layers
         for i in range(len(lat.flat)):
             lat_val = lat.flat[i]
             lon_val = u.flat[i]
             
             # Skip if already ice
-            if abs(lat_val) > np.pi/2.5:
+            if abs(lat_val) > np.pi/2.4:
                 continue
             
-            # Create continent-like patterns using sine waves
-            continent_noise = (np.sin(3*lon_val) * np.cos(2*lat_val) + 
-                              np.sin(5*lon_val + 1) * np.cos(3*lat_val) +
-                              np.sin(7*lon_val + 2) * 0.5)
+            # Create more complex continent patterns
+            continent_noise = (
+                np.sin(2.5*lon_val) * np.cos(1.5*lat_val) * 1.0 +
+                np.sin(4*lon_val + 0.5) * np.cos(2.5*lat_val) * 0.8 +
+                np.sin(6*lon_val + 1.2) * np.cos(1.8*lat_val) * 0.6 +
+                np.sin(3*lon_val - 0.8) * np.cos(3.2*lat_val) * 0.5
+            )
             
-            # Land areas
-            if continent_noise > 0.3:
+            # Add some randomness for texture
+            continent_noise += np.random.normal(0, 0.1)
+            
+            # Land areas with more detail
+            if continent_noise > 0.4:
                 # Vary by latitude for different biomes
-                if abs(lat_val) < np.pi/6:  # Tropical
-                    surface_color.flat[i] = 0.55  # Green
-                elif abs(lat_val) < np.pi/3:  # Temperate
-                    surface_color.flat[i] = 0.65  # Forest green
-                else:  # Polar/temperate transition
-                    surface_color.flat[i] = 0.75  # Brown/green mix
+                if abs(lat_val) < np.pi/8:  # Tropical/equatorial
+                    surface_color.flat[i] = 0.52  # Lush green
+                elif abs(lat_val) < np.pi/4:  # Subtropical
+                    surface_color.flat[i] = 0.58  # Green
+                elif abs(lat_val) < np.pi/2.8:  # Temperate
+                    surface_color.flat[i] = 0.62  # Forest green
+                elif abs(lat_val) < np.pi/2.5:  # Cold temperate
+                    surface_color.flat[i] = 0.72  # Brown/green
+                else:  # Tundra
+                    surface_color.flat[i] = 0.78  # Brown/gray
+            elif continent_noise > 0.2:
+                # Coastal areas
+                surface_color.flat[i] = 0.38  # Shallow water/coastal
         
-        # Create colorscale
+        # Create improved colorscale matching reference images
         colorscale_earth = [
-            [0.0, "#0a1a2c"],    # Deep ocean
-            [0.2, "#1a3a5c"],   # Ocean
-            [0.35, "#2d5a7b"],  # Shallow water
-            [0.5, "#3d7a9c"],   # Coastal water
-            [0.55, "#4a8a2a"],  # Tropical land
-            [0.65, "#5a9a3a"],  # Forest
-            [0.75, "#8a7a4a"],  # Mountains
-            [0.85, "#9a8a5a"],  # High mountains
-            [0.92, "#c0c8d0"],  # Snow line
-            [0.98, "#e0e8f0"],  # Ice
+            [0.0, "#081828"],    # Deep ocean
+            [0.15, "#0a2848"],   # Ocean
+            [0.28, "#1a3868"],  # Mid ocean
+            [0.38, "#2a4888"],  # Coastal water
+            [0.45, "#3a58a8"],  # Shallow coastal
+            [0.52, "#4a8a2a"],  # Tropical land
+            [0.58, "#5a9a3a"],  # Green
+            [0.62, "#6aaa4a"],  # Forest
+            [0.72, "#8a7a5a"],  # Temperate
+            [0.78, "#9a8a6a"],  # Tundra
+            [0.85, "#b0a080"],  # Mountains
+            [0.92, "#d0c0b0"],  # Snow line
+            [0.97, "#e8e8f0"],  # Ice
             [1.0, "#ffffff"],   # Pure ice
         ]
         
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
-            surfacecolor=surface_color, colorscale=colorscale_earth, opacity=0.9, showscale=False,
-            lighting=dict(ambient=0.35, diffuse=0.85, specular=0.2, roughness=0.5, fresnel=0.2),
+            surfacecolor=surface_color, colorscale=colorscale_earth, opacity=0.95, showscale=False,
+            lighting=dict(ambient=0.4, diffuse=0.8, specular=0.25, roughness=0.45, fresnel=0.25),
             name="Earth"))
+    
+    # Add latitude/longitude grid lines
+    r = 6371.0
+    # Longitude lines (vertical)
+    for lon_deg in range(-180, 181, 30):
+        lon_rad = np.radians(lon_deg)
+        lat_rad = np.linspace(-np.pi/2, np.pi/2, 50)
+        x_grid = r * np.cos(lat_rad) * np.cos(lon_rad)
+        y_grid = r * np.cos(lat_rad) * np.sin(lon_rad)
+        z_grid = r * np.sin(lat_rad)
+        fig.add_trace(go.Scatter3d(
+            x=x_grid, y=y_grid, z=z_grid,
+            mode="lines",
+            line=dict(color="rgba(100,150,200,0.3)", width=1),
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+    
+    # Latitude lines (horizontal)
+    for lat_deg in range(-90, 91, 30):
+        lat_rad = np.radians(lat_deg)
+        lon_rad = np.linspace(-np.pi, np.pi, 50)
+        x_grid = r * np.cos(lat_rad) * np.cos(lon_rad)
+        y_grid = r * np.cos(lat_rad) * np.sin(lon_rad)
+        z_grid = r * np.sin(lat_rad)
+        fig.add_trace(go.Scatter3d(
+            x=x_grid, y=y_grid, z=z_grid,
+            mode="lines",
+            line=dict(color="rgba(100,150,200,0.3)", width=1),
+            showlegend=False,
+            hoverinfo="skip"
+        ))
 
     # Full orbit paths (faint, static) - index 0 and 1
     fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
