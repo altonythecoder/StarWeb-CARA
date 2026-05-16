@@ -3,7 +3,7 @@
 ### Why This Project Was Developed
 This system was developed as a **Graduation Project** for the **Space Sciences and Technologies** department. With the exponential rise of low Earth orbit (LEO) satellite deployments, monitoring and mitigating orbital debris risks has become a critical challenge for modern space safety. 
 
-The primary objective of this project is to implement, evaluate, and visualize industry-standard conjunction assessment risk analysis (CARA) methodologies—specifically focusing on the operational collision risks posed by modern megaconstellations such as Starlink and OneWeb[cite: 2, 3, 38].
+The primary objective of this project is to implement, evaluate, and visualize industry-standard conjunction assessment risk analysis (CARA) methodologies—specifically focusing on the operational collision risks posed by modern megaconstellations such as Starlink and OneWeb.
 
 ### 👥 Project Team
 
