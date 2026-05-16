@@ -897,7 +897,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 # ================================================================================
 #  INTERFACE
 # ================================================================================
-st.set_page_config(page_title="LEO Conjunction Analysis System", page_icon="S", layout="wide",
+st.set_page_config(page_title="StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations", page_icon="S", layout="wide",
                    initial_sidebar_state="expanded")
 st.markdown(STYLE, unsafe_allow_html=True)
 
@@ -905,7 +905,7 @@ st.markdown("""
 <div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
   <div style="font-family:'Space Mono',monospace; font-size:.68rem;
               color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    LEO SATELLITE COLLISION ANALYSIS SYSTEM (starlink/iss/oneweb)
+    StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations (starlink/iss/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
     Low Earth Orbit<br>
