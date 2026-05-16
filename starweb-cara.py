@@ -829,7 +829,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         y_grid = r * np.cos(lat_rad) * np.sin(lon_rad)
         z_grid = r * np.sin(lat_rad)
         fig.add_trace(go.Scatter3d(
-            x=x_grid, y=y_grid, z=z_grid,
+            x=x_grid.tolist(), y=y_grid.tolist(), z=z_grid.tolist(),
             mode="lines",
             line=dict(color="rgba(100,150,200,0.3)", width=1),
             showlegend=False,
@@ -844,7 +844,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         y_grid = r * np.cos(lat_rad) * np.sin(lon_rad)
         z_grid = r * np.sin(lat_rad)
         fig.add_trace(go.Scatter3d(
-            x=x_grid, y=y_grid, z=z_grid,
+            x=x_grid.tolist(), y=y_grid.tolist(), z=z_grid.tolist(),
             mode="lines",
             line=dict(color="rgba(100,150,200,0.3)", width=1),
             showlegend=False,
