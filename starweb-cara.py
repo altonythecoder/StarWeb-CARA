@@ -774,7 +774,6 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
             colorscale=colorscale_earth, opacity=0.85, showscale=False,
             lighting=dict(ambient=0.4, diffuse=0.8, specular=0.1, roughness=0.7, fresnel=0.2),
-            lightposition=dict(x=200000, y=80000, z=120000),
             name="Earth"))
 
     # Full orbit paths (faint, static) - index 0 and 1
