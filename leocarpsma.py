@@ -17,7 +17,7 @@ import math
 ts = load.timescale()
 
 # ================================================================================
-#  CSS — GÖREV KONTROL KARANLIK TEMASI
+#  CSS — MISSION CONTROL DARK THEME
 # ================================================================================
 STYLE = """
 <style>
@@ -61,7 +61,7 @@ div[data-testid="stVerticalBlock"]{background:transparent !important;}
 [data-baseweb="select"] *{background:var(--bg3) !important;color:var(--text) !important;}
 [data-baseweb="popover"]{background:var(--bg3) !important;border:1px solid var(--border) !important;}
 [data-baseweb="menu"]{background:var(--bg3) !important;}
-/* Sidebar üst başlık (kırık Material Icons ikonu) gizle */
+/* Sidebar top header (broken Material Icons icon) hide */
 [data-testid="stSidebarHeader"]{display:none !important;}
 [data-testid="stSidebarCollapseButton"]{display:none !important;}
 header[data-testid="stHeader"]{display:none !important;}
@@ -72,15 +72,19 @@ header[data-testid="stHeader"]{display:none !important;}
 </style>
 """
 
+
 # ================================================================================
-#  DÜNYA GÖRÜNÜMÜ
+#  EARTH VIEW
 # ================================================================================
 @st.cache_data(show_spinner=False)
 def load_earth_texture(resolution: int = 270):
     try:
         url = ("https://upload.wikimedia.org/wikipedia/commons/thumb/"
                "c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg")
-        resp = requests.get(url, timeout=20)
+               
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        resp = requests.get(url, headers=headers, timeout=20)
+        
         img  = Image.open(BytesIO(resp.content)).convert("RGB")
         W, H = resolution * 2, resolution
         img  = img.resize((W, H), Image.LANCZOS)
@@ -101,7 +105,7 @@ def load_earth_texture(resolution: int = 270):
         return None
 
 # ================================================================================
-#  VERİ ÇEKME
+#  DATA FETCHING
 # ================================================================================
 def fetch_live_tles(username: str, password: str, search_query: str = "STARLINK"):
     try:
@@ -112,16 +116,16 @@ def fetch_live_tles(username: str, password: str, search_query: str = "STARLINK"
             raw = client.gp(object_name=op.like(f"{search_query}%"), format="tle",
                             orderby="epoch desc", limit=90)
         if not raw or not raw.strip():
-            st.sidebar.error(f"'{search_query}' için sonuç bulunamadı.")
+            st.sidebar.error(f"No results found for '{search_query}'.")
             return None
         lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
         return lines if len(lines) >= 2 else None
     except Exception as e:
-        st.sidebar.error(f"API Hatası: {e}")
+        st.sidebar.error(f"API Error: {e}")
         return None
 
 # ================================================================================
-#  TLE AYRIŞTIRMA
+#  TLE PARSING
 # ================================================================================
 def parse_tles(lines: list, limit: int = 30) -> list:
     sats = []
@@ -142,48 +146,48 @@ def parse_tles(lines: list, limit: int = 30) -> list:
     return sats
 
 # ================================================================================
-#  YÖRÜNGE ELEMANLARI (TLE'den)
+#  ORBITAL ELEMENTS (from TLE)
 # ================================================================================
 def get_orbital_elements(sat: EarthSatellite) -> dict:
-    """TLE'den Kepler yörünge elemanlarını çıkarır."""
+    """Extracts Kepler orbital elements from TLE."""
     try:
         model = sat.model
-        # TLE epoch'tan elemanlar
-        incl   = math.degrees(model.inclo)          # eğim (deg)
-        raan   = math.degrees(model.nodeo)           # yükselen düğüm (deg)
-        ecc    = model.ecco                          # dışmerkezlik
-        argp   = math.degrees(model.argpo)           # perije argümanı (deg)
-        mean_m = math.degrees(model.mo)              # ortalama anomali (deg)
-        n_rpm  = model.no_kozai * (60.0 / (2*math.pi))  # rad/dk → devir/dk
-        # Büyük yarı eksen: a = (GM/n^2)^(1/3), n rad/s
+        # Elements from TLE epoch
+        incl   = math.degrees(model.inclo)          # inclination (deg)
+        raan   = math.degrees(model.nodeo)           # RAAN (deg)
+        ecc    = model.ecco                          # eccentricity
+        argp   = math.degrees(model.argpo)           # argument of periapsis (deg)
+        mean_m = math.degrees(model.mo)              # mean anomaly (deg)
+        n_rpm  = model.no_kozai * (60.0 / (2*math.pi))  # rad/min → devir/min
+        # Semi-major axis: a = (GM/n^2)^(1/3), n rad/s
         GM     = 398600.4418  # km^3/s^2
         n_rads = model.no_kozai / 60.0  # rad/s
         a_km   = (GM / n_rads**2) ** (1/3)
         alt_km = a_km - 6371.0
         period_min = 2 * math.pi / model.no_kozai
         return {
-            "Büyük Yarı Eksen a (km)":   round(a_km, 1),
-            "Ortalama İrtifa (km)":       round(alt_km, 1),
-            "Dışmerkezlik e":             f"{ecc:.6f}",
-            "Eğim i (°)":                round(incl, 4),
-            "Yükselen Düğüm (RAAN) (°)": round(raan, 4),
-            "Perije Argümanı ω (°)":      round(argp, 4),
-            "Ortalama Anomali M (°)":     round(mean_m, 4),
-            "Yörünge Periyodu (dk)":      round(period_min, 2),
-            "Ortalama Hareket n (dev/dk)": round(n_rpm, 6),
+            "Semi-major Axis a (km)":   round(a_km, 1),
+            "Mean Altitude (km)":       round(alt_km, 1),
+            "Eccentricity e":             f"{ecc:.6f}",
+            "Inclination i (°)":                round(incl, 4),
+            "RAAN (°)": round(raan, 4),
+            "Arg of Perigee ω (°)":      round(argp, 4),
+            "Mean Anomaly M (°)":     round(mean_m, 4),
+            "Orbital Period (min)":      round(period_min, 2),
+            "Mean Motion n (rev/min)": round(n_rpm, 6),
         }
     except Exception:
         return {}
 
 # ================================================================================
-#  APSİS FİLTRESİ (Bölüm 2.1 — Tez)
+#  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
 def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
     """
-    Apsis (Apoje-Perije) Filtresi — Bölüm 2.1
-    Yörünge yükseklik bantları örtüşmeyen çiftleri eleyerek O(N^2)
-    karmaşıklığını azaltır.
-    q1 > Q2 + D   →   fiziksel kesişim imkânsız → elenir
+    Apsis (Apogee-Perigee) Filter — Section 2.1
+    Reduces O(N^2) complexity by filtering pairs with non-overlapping
+    altitude bands.
+    q1 > Q2 + D   →   physical intersection impossible → filtered
     """
     R_E = 6371.0
     GM  = 398600.4418
@@ -193,8 +197,8 @@ def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
             n   = sat.model.no_kozai / 60.0  # rad/s
             a   = (GM / n**2) ** (1/3)
             e   = sat.model.ecco
-            per = a * (1 - e) - R_E          # perije irtifası
-            apo = a * (1 + e) - R_E          # apoje irtifası
+            per = a * (1 - e) - R_E          # perigee altitude
+            apo = a * (1 + e) - R_E          # apogee altitude
             return per, apo
         except Exception:
             return 0.0, 10000.0
@@ -208,25 +212,25 @@ def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
     return passed
 
 # ================================================================================
-#  FOSTER 1992 2D-Pc (Bölüm 3.1 — Tez)
+#  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
 def foster_2d_pc(miss_km: float, sigma_r: float, sigma_t: float,
                   sigma_n: float, hbr_km: float = 0.020) -> float:
     """
-    Foster & Estes (1992) 2D-Pc Modeli — Bölüm 3.1
-    Encounter plane'e iz düşürülmüş Gauss integrali.
-    sigma_r: radyal (km), sigma_t: iz yönü (km), sigma_n: dik (km)
-    Birleşik kovaryans: encounter plane'deki iki bileşen.
+    Foster & Estes (1992) 2D-Pc Model — Section 3.1
+    Gaussian integral projected onto encounter plane.
+    sigma_r: radial (km), sigma_t: in-track (km), sigma_n: cross-track (km)
+    Combined covariance: two components in encounter plane.
     """
     try:
-        # Encounter plane bileşenleri (radyal + normal kullan)
-        sig_x = math.sqrt(sigma_r**2 + sigma_r**2)   # combined radyal
+        # Encounter plane components (radial + normal)
+        sig_x = math.sqrt(sigma_r**2 + sigma_r**2)   # combined radial
         sig_y = math.sqrt(sigma_n**2 + sigma_n**2)   # combined normal
         if sig_x <= 0 or sig_y <= 0:
             return 0.0
-        # 2D Gauss üzerinden daire integrali (sayısal)
-        # Gauss dağılımı TCA ortalama miss noktasında (miss_km, 0) merkezli;
-        # entegrasyon bölgesi HBR yarıçaplı daire orijin etrafında (gerçek çarpışma küresi).
+        # Circle integral over 2D Gaussian (numerical)
+        # Gaussian distribution centered at TCA mean miss point (miss_km, 0);
+        # integration region is HBR-radius circle around origin (actual collision sphere).
         def integrand(y, x):
             return (1.0 / (2*math.pi*sig_x*sig_y) *
                     math.exp(-0.5 * (((x - miss_km)/sig_x)**2 + (y/sig_y)**2)))
@@ -244,8 +248,8 @@ def foster_2d_pc(miss_km: float, sigma_r: float, sigma_t: float,
 def collision_probability_isotropic(miss_km: float, sigma_km: float,
                                      hbr_km: float = 0.020) -> float:
     """
-    Chan (1997) izotropik model — hızlı fallback.
-    Doğru formül: P(|X_rel| ≤ HBR) x ∈ N(miss, σ) için
+    Chan (1997) isotropic model — fast fallback.
+    Correct formula: P(|X_rel| ≤ HBR) for x ∈ N(miss, σ)
     Pc = Φ((HBR - miss)/σ) + Φ((HBR + miss)/σ) - 1
     """
     if sigma_km <= 0:
@@ -253,92 +257,92 @@ def collision_probability_isotropic(miss_km: float, sigma_km: float,
     pc = norm.cdf((hbr_km - miss_km) / sigma_km) + norm.cdf((hbr_km + miss_km) / sigma_km) - 1.0
     return max(float(pc), 0.0)
 
-# Dışa açık alias
+# Public alias
 def collision_probability(miss_km, sigma_km, hbr_km=0.020):
     return collision_probability_isotropic(miss_km, sigma_km, hbr_km)
 
 # ================================================================================
-#  MAHALANOBİS MESAFESİ TESTİ (Bölüm 3.2 — Tez)
+#  MAHALANOBIS DISTANCE TEST (Section 3.2 — Thesis)
 # ================================================================================
 def mahalanobis_test(miss_km: float, sigma_km: float) -> dict:
     """
-    2D-Pc geçerlilik testi (CARA metodolojisi — Bölüm 3.2).
-    Mahalanobis mesafesi Md = miss / sigma.
-    Md < 1.5 → doğrusal hareket varsayımı çöküyor → 3D-Pc gerekli.
+    2D-Pc validity test (CARA methodology — Section 3.2).
+    Mahalanobis distance Md = miss / sigma.
+    Md < 1.5 → linear motion assumption breaks down → 3D-Pc required.
     """
     if sigma_km <= 0:
-        return {"Md": 999.0, "valid_2d": True, "label": "Geçerli"}
+        return {"Md": 999.0, "valid_2d": True, "label": "Valid"}
     Md = miss_km / sigma_km
     valid = Md >= 1.5
     if Md < 0.5:
-        label = "Geçersiz — 3D-Pc / Monte Carlo gerekli"
+        label = "Invalid — 3D-Pc / Monte Carlo required"
     elif Md < 1.5:
-        label = "Sınırda — 3D-Pc tavsiye edilir"
+        label = "Borderline — 3D-Pc recommended"
     else:
-        label = "2D-Pc Geçerli"
+        label = "2D-Pc Valid"
     return {"Md": round(Md, 3), "valid_2d": valid, "label": label}
 
 # ================================================================================
-#  MAKSIMUM Pc ANALİZİ (Bölüm 4 — Tez)
+#  MAXIMUM Pc ANALYSIS (Section 4 — Thesis)
 # ================================================================================
 def max_pc_analysis(miss_km: float, hbr_km: float = 0.020) -> float:
     """
-    Max Pc — Bölüm 4 (CARA araç seti).
-    Kovaryans çarpanı σ taranarak matematiksel maksimum Pc bulunur.
-    En kötü senaryo: σ_opt = miss / sqrt(2) (Gauss zirve noktası).
+    Max Pc — Section 4 (CARA toolkit).
+    Scans covariance multiplier σ to find mathematical maximum Pc.
+    Worst case: σ_opt = miss / sqrt(2) (Gaussian peak point).
     """
     sigma_opt = miss_km / math.sqrt(2.0) if miss_km > 0 else hbr_km
     return collision_probability_isotropic(miss_km, max(sigma_opt, 1e-6), hbr_km)
 
 # ================================================================================
-#  OLASILIK SEYRELMESİ TESPİTİ (Bölüm 4 — Tez)
+#  PROBABILITY DILUTION DETECTION (Section 4 — Thesis)
 # ================================================================================
 def dilution_check(pc: float, sigma_km: float, miss_km: float) -> dict:
     """
-    Probability Dilution (Olasılık Seyrelmesi) tespiti — Bölüm 4.
-    Geniş kovaryans → küçük Pc → sahte güven.
-    Uyarı: sigma > 5*miss_km ve pc < 1e-6
+    Probability Dilution detection — Section 4.
+    Wide covariance → small Pc → false confidence.
+    Warning: sigma > 5*miss_km and pc < 1e-6
     """
     diluted = (sigma_km > 5.0 * miss_km) and (pc < 1e-6) and (miss_km < 100.0)
     if diluted:
         return {
             "diluted": True,
-            "msg": "OLASILIK SEYRELMESİ TESPIT EDILDI: Genis kovaryans Pc degerini maskeliyor. "
-                   "WSPRT veya Max-Pc analizi gereklidir.",
+            "msg": "PROBABILITY DILUTION DETECTED: Wide covariance masking Pc value. "
+                   "WSPRT or Max-Pc analysis required.",
         }
     return {"diluted": False, "msg": "Normal"}
 
 # ================================================================================
-#  PARÇALANMA OLASILIĞI Pf (Bölüm 4 — Tez)
+#  FRAGMENTATION PROBABILITY Pf (Section 4 — Thesis)
 # ================================================================================
 def fragmentation_probability(rel_vel_km_s: float,
                                mass_a_kg: float = 250.0,
                                mass_b_kg: float = 250.0) -> dict:
     """
-    Çarpışma Sonucu (Collision Consequence) — Bölüm 4.
-    NASA operasyonel rehberine göre kinetik enerji bazlı parçalanma riski.
-    Özgül Enerji: E_c = 0.5 * m_b * v_rel^2 / m_a  (J/g)
-    E_c > 40 J/g → Katastrofik parçalanma (Kessler katkısı)
-    E_c > 0 J/g  → Hasar verici
+    Collision Consequence — Section 4.
+    Kinetic energy-based fragmentation risk per NASA operational guidelines.
+    Specific Energy: E_c = 0.5 * m_b * v_rel^2 / m_a  (J/g)
+    E_c > 40 J/g → Catastrophic fragmentation (Kessler contribution)
+    E_c > 0 J/g  → Damaging
     """
     v_ms = rel_vel_km_s * 1000.0
     E_c  = 0.5 * mass_b_kg * v_ms**2 / (mass_a_kg * 1000.0)  # J/g
     if E_c >= 40.0:
-        pf_level = "KATASTROFIK"
+        pf_level = "CATASTROPHIC"
         pf_color = "#ff2b4d"
-        pf_desc  = "Tam parçalanma — Kessler katkısı muhtemel"
+        pf_desc  = "Complete fragmentation — Kessler contribution likely"
     elif E_c >= 10.0:
-        pf_level = "CIDDI"
+        pf_level = "SEVERE"
         pf_color = "#ff6b00"
-        pf_desc  = "Operasyonel kayıp ve önemli enkaz"
+        pf_desc  = "Operational loss and significant debris"
     elif E_c >= 1.0:
-        pf_level = "HASARLI"
+        pf_level = "DAMAGING"
         pf_color = "#ffaa00"
-        pf_desc  = "Kısmi hasar veya subsystem arızası"
+        pf_desc  = "Partial damage or subsystem failure"
     else:
-        pf_level = "DUSUK"
+        pf_level = "LOW"
         pf_color = "#00ff9d"
-        pf_desc  = "Küçük hasar — parçalanma düşük ihtimal"
+        pf_desc  = "Minor damage — fragmentation unlikely"
     n_debris = int(0.1 * (mass_a_kg + mass_b_kg) * (rel_vel_km_s / 7.0))
     return {
         "E_c_J_per_g": round(E_c, 2),
@@ -349,21 +353,21 @@ def fragmentation_probability(rel_vel_km_s: float,
     }
 
 # ================================================================================
-#  RISK SEVİYESİ
+#  RISK LEVEL
 # ================================================================================
 def risk_level(pc: float) -> tuple:
-    """NASA STD-8719.14 — 4 kademeli risk sınıflandırması."""
-    if   pc > 1e-3: return "KRİTİK", "#ff2b4d"
-    elif pc > 1e-4: return "YÜKSEK", "#ff6b00"
-    elif pc > 1e-5: return "ORTA",   "#ffaa00"
-    else:           return "DÜŞÜK",  "#00ff9d"
+    """NASA STD-8719.14 — 4-tier risk classification."""
+    if   pc > 1e-3: return "CRITICAL", "#ff2b4d"
+    elif pc > 1e-4: return "HIGH", "#ff6b00"
+    elif pc > 1e-5: return "MEDIUM",   "#ffaa00"
+    else:           return "LOW",  "#00ff9d"
 
 # ================================================================================
-#  ANA YAKINSAMA ANALİZİ (APSİS FİLTRELİ)
+#  MAIN CONJUNCTION ANALYSIS (APSIS FILTERED)
 # ================================================================================
-def compute_conjunctions(sats: list, window_hrs: int, sigma_km: float) -> tuple:
+def compute_conjunctions(sats: list, window_hrs: int, sigma_km: float, mass_a_kg: float = 250.0, mass_b_kg: float = 250.0) -> tuple:
     """
-    Apsis filtresi + 5 dk adımlı TCA taraması + çoklu Pc metrikleri.
+    Apsis filter + 5-min step TCA scan + multiple Pc metrics.
     Returns: (df_results, n_apsis_filtered, n_total_pairs)
     """
     now         = ts.now()
@@ -371,7 +375,7 @@ def compute_conjunctions(sats: list, window_hrs: int, sigma_km: float) -> tuple:
     n_steps     = window_hrs * 60 // step_m
     n_total     = len(list(combinations(sats, 2)))
 
-    # Apsis ön filtresi
+    # Apsis pre-filter
     candidate_pairs = apsis_filter(sats, threshold_km=100.0)
     n_filtered      = n_total - len(candidate_pairs)
 
@@ -399,27 +403,27 @@ def compute_conjunctions(sats: list, window_hrs: int, sigma_km: float) -> tuple:
         pc_max    = max_pc_analysis(min_d)
         mah       = mahalanobis_test(min_d, sigma_km)
         dil       = dilution_check(pc_iso, sigma_km, min_d)
-        frag      = fragmentation_probability(rel_vel)
+        frag      = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
         sev, color = risk_level(pc_iso)
 
         results.append({
             "TCA (UTC)":           best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
-            "Obje A":              s1.name,
-            "Obje B":              s2.name,
-            "Mesafe (km)":         round(min_d, 3),
-            "Görecel Hız (km/s)":  round(rel_vel, 3),
-            "Pc (izotropik)":      pc_iso,
+            "Object A":              s1.name,
+            "Object B":              s2.name,
+            "Distance (km)":         round(min_d, 3),
+            "Relative Velocity (km/s)":  round(rel_vel, 3),
+            "Pc (isotropic)":      pc_iso,
             "Pc (Foster 2D)":      pc_foster,
             "Pc Max":              pc_max,
-            "Pc (bilimsel)":       f"{pc_iso:.3e}",
+            "Pc (scientific)":       f"{pc_iso:.3e}",
             "Mahalanobis Md":      mah["Md"],
-            "2D-Pc Geçerli":       mah["label"],
-            "Dilüsyon":            dil["diluted"],
-            "Dilüsyon Mesajı":     dil["msg"],
+            "2D-Pc Valid":       mah["label"],
+            "Dilution":            dil["diluted"],
+            "Dilution Message":     dil["msg"],
             "Ec (J/g)":            frag["E_c_J_per_g"],
-            "Parçalanma Seviyesi": frag["level"],
-            "Tahmini Enkaz":       frag["est_debris"],
-            "Risk Seviyesi":       sev,
+            "Fragmentation Level": frag["level"],
+            "Estimated Debris":       frag["est_debris"],
+            "Risk Level":       sev,
             "_color":              color,
             "_dist_arr":           dist_arr,
             "_s1":                 s1,
@@ -434,7 +438,7 @@ def _relative_velocity(s1, s2, t) -> float:
     return float(np.linalg.norm(np.array(v1) - np.array(v2)))
 
 # ================================================================================
-#  GRAFİKLER
+#  PLOTS
 # ================================================================================
 DARK = dict(
     paper_bgcolor="#07090f",
@@ -472,7 +476,7 @@ def fig_3d_orbits(sats):
         p0 = sat.at(now).position.km
         fig.add_trace(go.Scatter3d(x=[p0[0]], y=[p0[1]], z=[p0[2]], mode="markers",
             marker=dict(color=c, size=6, symbol="circle", line=dict(color="#ffffff", width=1)),
-            name=f"{sat.name} (simdi)", showlegend=False))
+            name=f"{sat.name} (now)", showlegend=False))
     fig.update_layout(
         **DARK, margin=dict(l=0, r=0, t=0, b=0),
         scene=dict(bgcolor="#000408",
@@ -525,7 +529,7 @@ def fig_ground_tracks(sats):
         ),
         legend=dict(font=dict(size=8, family="Space Mono"),
             bgcolor="rgba(7,9,15,.85)", bordercolor="#1a2740", borderwidth=1, x=0.0, y=1.0),
-        title=dict(text="Zemin Izi -- Anlik Konum ve 95dk Yorunge",
+        title=dict(text="Ground Track -- Current Position and 95min Orbit",
             font=dict(size=11, family="Barlow Condensed", color="#00c8ff"), x=0.01, y=0.99),
     )
     return fig
@@ -539,7 +543,7 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km):
     fig.add_hrect(y0=max(0, miss_km-sigma_km), y1=miss_km+sigma_km,
                   fillcolor="rgba(0,200,255,.05)", line_width=0)
     fig.add_trace(go.Scatter(x=t_axis, y=dist_arr, mode="lines",
-        line=dict(color="#00c8ff", width=1.5), name="Mesafe (km)",
+        line=dict(color="#00c8ff", width=1.5), name="Distance (km)",
         fill="tozeroy", fillcolor="rgba(0,200,255,.04)"))
     tca_i = int(np.argmin(dist_arr))
     fig.add_trace(go.Scatter(x=[t_axis[tca_i]], y=[dist_arr[tca_i]],
@@ -548,9 +552,9 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km):
         textfont=dict(size=9, family="Space Mono", color="#ff2b4d"),
         name="TCA", showlegend=False))
     fig.update_layout(**DARK, height=280,
-        xaxis=dict(title="Zaman (saat)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
-        yaxis=dict(title="Mesafe (km)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
-        title=dict(text="Mesafe Profili — TCA Analizi",
+        xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
+        yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
+        title=dict(text="Distance Profile — TCA Analysis",
             font=dict(size=11, family="Barlow Condensed", color="#00c8ff"), x=0.01),
         legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
         margin=dict(l=10, r=10, t=35, b=10),
@@ -584,16 +588,16 @@ def fig_risk_gauge(pc: float):
     return fig
 
 def fig_orbital_elements_radar(elems_list):
-    """Uyduları yörünge elemanları scatter ile göster."""
+    """Display satellites by orbital elements using scatter plot."""
     fig = go.Figure()
     colors = ["#00c8ff","#00ff9d","#ffaa00","#ff6b00","#c060ff","#ff2b4d"]
     for k, (name, elems) in enumerate(elems_list):
         if not elems:
             continue
         try:
-            alt  = float(str(elems.get("Ortalama İrtifa (km)", 0)))
-            incl = float(str(elems.get("Eğim i (°)", 0)))
-            ecc  = float(str(elems.get("Dışmerkezlik e", "0")))
+            alt  = float(str(elems.get("Mean Altitude a (km)", 0)))
+            incl = float(str(elems.get("Inclination i (°)", 0)))
+            ecc  = float(str(elems.get("Eccentricity e", "0")))
             fig.add_trace(go.Scatter(
                 x=[incl], y=[alt],
                 mode="markers+text",
@@ -607,9 +611,9 @@ def fig_orbital_elements_radar(elems_list):
             continue
     fig.update_layout(
         **DARK, height=320,
-        xaxis=dict(title="Eğim i (°)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
-        yaxis=dict(title="İrtifa (km)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
-        title=dict(text="Yörünge Uzayı — İrtifa / Eğim Dağılımı",
+        xaxis=dict(title="Inclination i (°)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
+        yaxis=dict(title="Altitude (km)", gridcolor="#1a2740", zeroline=False, tickfont=dict(size=9)),
+        title=dict(text="Orbital Space — Altitude / Inclination Distribution",
             font=dict(size=11, family="Barlow Condensed", color="#00c8ff"), x=0.01),
         margin=dict(l=10, r=10, t=35, b=10),
         showlegend=False,
@@ -617,12 +621,12 @@ def fig_orbital_elements_radar(elems_list):
     return fig
 
 # ================================================================================
-#  KENDİ UYDUSU İÇİN YAKINSAMA ANALİZİ
+#  CONJUNCTION ANALYSIS FOR OWN SATELLITE
 # ================================================================================
-def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: float) -> pd.DataFrame:
+def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: float, mass_a_kg: float = 250.0, mass_b_kg: float = 250.0) -> pd.DataFrame:
     """
-    Kullanıcının kendi uydusunu mevcut uydu filosuyla karşılaştırır.
-    Apsis filtresi + 5 dk TCA taraması + tam Pc metrikleri.
+    Compares user's own satellite with existing satellite fleet.
+    Apsis filter + 5-min TCA scan + full Pc metrics.
     """
     now    = ts.now()
     step_m = 5
@@ -643,7 +647,7 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
 
     for sat in sats:
         q, Q = apsis(sat)
-        # Apsis filtresi
+        # Apsis filter
         if max(my_q, q) > min(my_Q, Q) + 100.0:
             continue
 
@@ -669,27 +673,27 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
         pc_max    = max_pc_analysis(min_d)
         mah       = mahalanobis_test(min_d, sigma_km)
         dil       = dilution_check(pc_iso, sigma_km, min_d)
-        frag      = fragmentation_probability(rel_vel)
+        frag      = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
         sev, color = risk_level(pc_iso)
 
         results.append({
             "TCA (UTC)":           best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
-            "Obje A":              my_sat.name,
-            "Obje B":              sat.name,
-            "Mesafe (km)":         round(min_d, 3),
-            "Görecel Hız (km/s)":  round(rel_vel, 3),
-            "Pc (izotropik)":      pc_iso,
+            "Object A":              my_sat.name,
+            "Object B":              sat.name,
+            "Distance (km)":         round(min_d, 3),
+            "Relative Velocity (km/s)":  round(rel_vel, 3),
+            "Pc (isotropic)":      pc_iso,
             "Pc (Foster 2D)":      pc_foster,
             "Pc Max":              pc_max,
-            "Pc (bilimsel)":       f"{pc_iso:.3e}",
+            "Pc (scientific)":       f"{pc_iso:.3e}",
             "Mahalanobis Md":      mah["Md"],
-            "2D-Pc Geçerli":       mah["label"],
-            "Dilüsyon":            dil["diluted"],
-            "Dilüsyon Mesajı":     dil["msg"],
+            "2D-Pc Valid":       mah["label"],
+            "Dilution":            dil["diluted"],
+            "Dilution Message":     dil["msg"],
             "Ec (J/g)":            frag["E_c_J_per_g"],
-            "Parçalanma Seviyesi": frag["level"],
-            "Tahmini Enkaz":       frag["est_debris"],
-            "Risk Seviyesi":       sev,
+            "Fragmentation Level": frag["level"],
+            "Estimated Debris":       frag["est_debris"],
+            "Risk Level":       sev,
             "_color":              color,
             "_dist_arr":           dist_arr,
             "_s1":                 my_sat,
@@ -700,29 +704,29 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
 
 
 # ================================================================================
-#  CANLI 3D ANİMASYON (İki Uydu — TCA Odaklı)
+#  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
 def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
     """
-    İki uyduyu gerçek zamanlı animasyonla gösteren 3D Plotly figürü.
-    - Oynat / Durdur / 2× / 5× hız butonları
-    - Zaman kaydırıcısı
-    - TCA'ya atla butonu
-    - Uydular arası mesafe çizgisi (renge göre tehlike seviyesi)
-    - Yörünge izleri
+    3D Plotly figure showing two satellites with real-time animation.
+    - Play / Stop / 2× / 5× speed buttons
+    - Time slider
+    - Jump to TCA button
+    - Inter-satellite distance line (color by danger level)
+    - Orbit trails
     """
     now     = ts.now()
-    step_min = 2                           # dakika adımı
-    n_frames = min(window_hrs * 30, 360)  # max 360 kare (12 saat)
-    trail_len = 25                         # izin uzunluğu (kare sayısı)
-    orbit_pts = 100                        # tam yörünge nokta sayısı
+    step_min = 2                           # minute step
+    n_frames = min(window_hrs * 30, 360)  # max 360 frames (12 hours)
+    trail_len = 25                         # trail length (frame count)
+    orbit_pts = 100                        # full orbit point count
 
-    # Tam yörünge yolları (statik arka plan)
+    # Full orbit paths (static background)
     orb_off = np.linspace(0, 96, orbit_pts) / 1440.0
     orb_a   = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
     orb_b   = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
 
-    # Animasyon adımlarındaki konumlar (vektörize)
+    # Positions at animation steps (vectorized)
     anim_off = np.arange(n_frames) * step_min / 1440.0
     anim_jd  = now.tt + anim_off
     pos_a    = sat_a.at(ts.tt_jd(anim_jd)).position.km   # (3, n_frames)
@@ -736,7 +740,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
         if d < 200:  return "#ffaa00"
         return "rgba(100,180,255,0.55)"
 
-    # ── Statik figür oluştur ──────────────────────────────────────────────────
+    # ── Create static figure ──────────────────────────────────────────────────
     fig = go.Figure()
 
     earth = load_earth_texture(200)
@@ -747,7 +751,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             showscale=False, opacity=1.0, hoverinfo="skip",
             lightposition=dict(x=200000, y=80000, z=120000),
             lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
-            name="Dünya",
+            name="Earth",
         ))
     else:
         r = 6371.0
@@ -756,15 +760,15 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
             colorscale="Blues", opacity=0.4, showscale=False))
 
-    # Tam yörünge yolları (soluk, statik)
+    # Full orbit paths (faint, static)
     fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
-        line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" yörüngesi",
+        line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" orbit",
         showlegend=False))
     fig.add_trace(go.Scatter3d(x=orb_b[0], y=orb_b[1], z=orb_b[2], mode="lines",
-        line=dict(color="rgba(255,107,0,0.12)", width=1.5), name=sat_b.name+" yörüngesi",
+        line=dict(color="rgba(255,107,0,0.12)", width=1.5), name=sat_b.name+" orbit",
         showlegend=False))
 
-    # TCA noktası (statik kırmızı işaret)
+    # TCA point (static red marker)
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
     fig.add_trace(go.Scatter3d(
         x=[mid_tca[0]], y=[mid_tca[1]], z=[mid_tca[2]],
@@ -773,12 +777,12 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
                     line=dict(color="#ffffff", width=1)),
         text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
         textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
-        name="TCA Noktası",
+        name="TCA Point",
     ))
 
-    n_static = len(fig.data)  # statik iz sayısı — dinamik izler bundan sonra
+    n_static = len(fig.data)  # static trace count — dynamic traces after this
 
-    # İlk dinamik durum (kare 0)
+    # Initial dynamic state (frame 0)
     def make_dynamic_traces(i):
         t0 = max(0, i - trail_len)
         ta = pos_a[:, t0:i+1]
@@ -807,7 +811,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
                 line=dict(color=dc, width=2, dash="dot"),
                 text=["", f"  Δ {dists[i]:.1f} km"],
                 textfont=dict(color=dc, size=9, family="Space Mono"),
-                name=f"Mesafe", showlegend=False,
+                name=f"Distance", showlegend=False,
             ),
         ]
 
@@ -816,13 +820,13 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 
     dyn_idx = list(range(n_static, n_static + 5))
 
-    # ── Animasyon kareleri ────────────────────────────────────────────────────
+    # ── Animation frames ────────────────────────────────────────────────────
     frames = []
     slider_steps = []
     for i in range(n_frames):
         t_utc = ts.tt_jd(anim_jd[i]).utc_strftime("%H:%M UTC")
         t_min = i * step_min
-        title_txt = (f"T+{t_min:04d} dk  |  {t_utc}  |  "
+        title_txt = (f"T+{t_min:04d} min  |  {t_utc}  |  "
                      f"Δ {dists[i]:.1f} km"
                      + ("  ⚠ TCA" if i == tca_idx else ""))
         frames.append(go.Frame(
@@ -839,13 +843,13 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 
     fig.frames = frames
 
-    # ── Layout + kontroller ───────────────────────────────────────────────────
+    # ── Layout + controls ───────────────────────────────────────────────────
     fig.update_layout(
         **DARK,
         height=640,
         margin=dict(l=0, r=0, t=52, b=10),
         title=dict(
-            text=f"{sat_a.name}  ×  {sat_b.name} — TCA: {tca_dist:.2f} km  (T+{tca_idx*step_min} dk)",
+            text=f"{sat_a.name}  ×  {sat_b.name} — TCA: {tca_dist:.2f} km  (T+{tca_idx*step_min} min)",
             font=dict(family="Barlow Condensed", color="#00c8ff", size=14), x=0.01,
         ),
         scene=dict(
@@ -863,10 +867,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             font=dict(family="Space Mono", size=9, color="#b8cfe0"),
             y=1.06, x=0.0, xanchor="left", pad=dict(r=4),
             buttons=[
-                dict(label="▶ OYNAT", method="animate",
+                dict(label="▶ PLAY", method="animate",
                      args=[None, dict(frame=dict(duration=80, redraw=True),
                                      fromcurrent=True, mode="immediate")]),
-                dict(label="⏸ DURDUR", method="animate",
+                dict(label="⏸ STOP", method="animate",
                      args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
                 dict(label="⏩ 2×", method="animate",
                      args=[None, dict(frame=dict(duration=40, redraw=True),
@@ -874,7 +878,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
                 dict(label="⏩⏩ 5×", method="animate",
                      args=[None, dict(frame=dict(duration=15, redraw=True),
                                      fromcurrent=True, mode="immediate")]),
-                dict(label="⏮ TCA'ya Git", method="animate",
+                dict(label="⏮ JUMP TO TCA", method="animate",
                      args=[[str(tca_idx)],
                            dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
             ],
@@ -891,9 +895,9 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 
 
 # ================================================================================
-#  ARAYÜZ
+#  INTERFACE
 # ================================================================================
-st.set_page_config(page_title="LEO Yaknnsama Analiz Sistemi", page_icon="S", layout="wide",
+st.set_page_config(page_title="LEO Conjunction Analysis System", page_icon="S", layout="wide",
                    initial_sidebar_state="expanded")
 st.markdown(STYLE, unsafe_allow_html=True)
 
@@ -901,36 +905,36 @@ st.markdown("""
 <div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
   <div style="font-family:'Space Mono',monospace; font-size:.68rem;
               color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    LEO UYDULARININ ÇARPIŞMA ANALİZİ SİSTEMİ (starlink/iss/oneweb)
+    LEO SATELLITE COLLISION ANALYSIS SYSTEM (starlink/iss/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
-    Alcak Dünya Yörüngesinde<br>
-    <span style="color:#00c8ff;">Yakınsama Analizi &amp; Carpışma Riski Simulasyonu</span>
+    Low Earth Orbit<br>
+    <span style="color:#00c8ff;">Conjunction Analysis &amp; Collision Risk Simulation</span>
   </h1>
   <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
               color:#4a6880; margin-top:6px; letter-spacing:.05em;">
-    Uzay Bilimleri ve Teknolojileri Bitirme Ödevi · Space-Track GP Veri Tabani · Skyfield SGP4 Propagatoru
+    Space Sciences and Technologies Graduation Project · Space-Track GP Database · Skyfield SGP4 Propagator
   </div>
 </div>
 """, unsafe_allow_html=True)
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────
-st.sidebar.markdown("### KONTROL PANELİ")
+st.sidebar.markdown("### CONTROL PANEL")
 
-# ─── BÖLÜM 1: OTOMATİK TLE İNDİRME ─────────────────────────────────────────
+# ─── SECTION 1: AUTO TLE DOWNLOAD ─────────────────────────────────────────
 st.sidebar.markdown("""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
     letter-spacing:.15em;color:#00c8ff;text-transform:uppercase;
     border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    1 — OTOMATİK TLE İNDİR</div>""", unsafe_allow_html=True)
-st.sidebar.markdown("**Space-Track Kimlik Doğrulama**")
-user_email  = st.sidebar.text_input("E-posta", placeholder="user@domain.com")
-user_pass   = st.sidebar.text_input("Sifre", placeholder="........", type="password")
-st.sidebar.markdown("**Hedef Uydu Kümesi** *(sadece LEO filolarına odaklanılmıştır)*")
-search_term = st.sidebar.selectbox("Küme seçin",
+    1 — AUTO TLE DOWNLOAD</div>""", unsafe_allow_html=True)
+st.sidebar.markdown("**Space-Track Authentication**")
+user_email  = st.sidebar.text_input("Email", placeholder="user@domain.com")
+user_pass   = st.sidebar.text_input("Password", placeholder="........", type="password")
+st.sidebar.markdown("**Target Satellite Constellation** *(focused on LEO fleets only)*")
+search_term = st.sidebar.selectbox("Select constellation",
     ["STARLINK", "ISS", "ONEWEB"], label_visibility="collapsed")
-if st.sidebar.button("CANLI TLE VERİSİ İNDİR"):
+if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
     if user_email and user_pass:
-        with st.spinner("Space-Track veritabanina baglaniliyor..."):
+        with st.spinner("Connecting to Space-Track database..."):
             key = "ISS" if search_term == "ISS" else search_term
             data = fetch_live_tles(user_email, user_pass, key)
             if data:
@@ -938,52 +942,52 @@ if st.sidebar.button("CANLI TLE VERİSİ İNDİR"):
                 st.session_state["loaded_group"] = search_term
                 is3 = not (data[0].startswith("1 ") or data[0].startswith("2 "))
                 count = len(data) // 3 if is3 else len(data) // 2
-                st.sidebar.success(f"{count} uydu yüklendi.")
+                st.sidebar.success(f"{count} satellites loaded.")
     else:
-        st.sidebar.warning("Kimlik bilgisi gerekli.")
+        st.sidebar.warning("Authentication required.")
 
 st.sidebar.markdown("---")
 
-# ─── BÖLÜM 2: MANUEL TLE GİRİŞİ ─────────────────────────────────────────────
+# ─── SECTION 2: MANUAL TLE ENTRY ─────────────────────────────────────────────
 st.sidebar.markdown("""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
     letter-spacing:.15em;color:#00ff9d;text-transform:uppercase;
     border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    2 — KENDİ UYDUNU GİR (TLE)</div>""", unsafe_allow_html=True)
-st.sidebar.markdown("<small style='color:#4a6880;'>3 satır TLE (isim + satır1 + satır2)</small>",
+    2 — ENTER YOUR SATELLITE (TLE)</div>""", unsafe_allow_html=True)
+st.sidebar.markdown("<small style='color:#4a6880;'>3-line TLE (name + line1 + line2)</small>",
                     unsafe_allow_html=True)
 manual_tle_text = st.sidebar.text_area(
-    "Manuel TLE",
+    "Manual TLE",
     height=110,
     placeholder="MY-SAT\n1 99999U ...\n2 99999  ...",
     label_visibility="collapsed",
     key="manual_tle_input",
 )
-if st.sidebar.button("MANUEL TLE YÜKLE"):
+if st.sidebar.button("LOAD MANUAL TLE"):
     lines = [l.strip() for l in manual_tle_text.strip().split("\n") if l.strip()]
     if len(lines) >= 3:
         try:
             my_sat = EarthSatellite(lines[1], lines[2], lines[0], ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success(f"✓ {my_sat.name} yüklendi.")
+            st.sidebar.success(f"✓ {my_sat.name} loaded.")
         except Exception as e:
-            st.sidebar.error(f"TLE hatası: {e}")
+            st.sidebar.error(f"TLE error: {e}")
     elif len(lines) == 2:
         try:
             my_sat = EarthSatellite(lines[0], lines[1], "CUSTOM-SAT", ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success("✓ CUSTOM-SAT yüklendi.")
+            st.sidebar.success("✓ CUSTOM-SAT loaded.")
         except Exception as e:
-            st.sidebar.error(f"TLE hatası: {e}")
+            st.sidebar.error(f"TLE error: {e}")
     else:
-        st.sidebar.warning("En az 2 TLE satırı girin.")
+        st.sidebar.warning("Enter at least 2 TLE lines.")
 
 if "my_sat" in st.session_state:
     ms = st.session_state["my_sat"]
     st.sidebar.markdown(f"""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
         color:#00ff9d;padding:6px 10px;background:rgba(0,255,157,.05);
         border:1px solid rgba(0,255,157,.2);border-radius:2px;margin-top:4px;">
-        ✓ AKTİF: {ms.name}</div>""", unsafe_allow_html=True)
-    if st.sidebar.button("Kendi Uydumu Sil"):
+        ✓ ACTIVE: {ms.name}</div>""", unsafe_allow_html=True)
+    if st.sidebar.button("Delete My Satellite"):
         del st.session_state["my_sat"]
         st.rerun()
 
@@ -991,333 +995,334 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
     letter-spacing:.15em;color:#4a6880;text-transform:uppercase;
     border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    3 — ANALİZ PARAMETRELERİ</div>""", unsafe_allow_html=True)
-window_hrs  = st.sidebar.slider("Analiz penceresi (saat)", 1, 48, 24)
-sigma_km    = st.sidebar.select_slider("Konum belirsizligi σ (km)",
+    3 — ANALYSIS PARAMETERS</div>""", unsafe_allow_html=True)
+window_hrs  = st.sidebar.slider("Analysis window (hours)", 1, 48, 24)
+sigma_km    = st.sidebar.select_slider("Position uncertainty σ (km)",
     options=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0], value=0.5)
-sat_limit   = st.sidebar.slider("Maksimum uydu sayisi", 5, 30, 15)
+sat_limit   = st.sidebar.slider("Maximum satellite count", 5, 30, 15)
 hbr_km      = st.sidebar.select_slider("Hard-Body Radius HBR (km)",
     options=[0.005, 0.010, 0.020, 0.050, 0.100], value=0.020)
+mass_a_kg   = st.sidebar.slider("Object A Mass (kg)", 10, 5000, 250)
+mass_b_kg   = st.sidebar.slider("Object B Mass (kg)", 10, 5000, 250)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 **Model:** Chan 1997 + Foster 1992  
 **Propagator:** SGP4/SDP4  
-**Filtre:** Apsis + Mesafe  
-**Veri:** Space-Track GP  
-**TCA Adimi:** 5 dk  
-**HBR:** Secim ile
+**Filter:** Apsis + Distance  
+**Data:** Space-Track GP  
+**TCA Step:** 5 min  
+**HBR:** User selected
 """)
 
-# VERİ KONTROLÜ
+# DATA CHECK
 if "tle_data" not in st.session_state:
-    st.info("Sol panelden Space-Track bilgilerinizi girerek veri indirin.")
+    st.info("Download data by entering your Space-Track credentials in the left panel.")
     st.markdown("""
     <div class="info-panel">
-      <b>Nasıl kullanılır?</b><br>
-      1. <b>space-track.org</b> adresinden ücretsiz hesap oluşturun.<br>
-      2. E-posta ve şifrenizi sol panele girin.<br>
-      3. Uydu kümesini seçip <b>CANLI TLE VERİSİ İNDİR</b> butonuna tıklayın.<br>
-      4. Tüm sekmeler aktif hale gelir.
+      <b>How to use?</b><br>
+      1. Create a free account at <b>space-track.org</b>.<br>
+      2. Enter your email and password in the left panel.<br>
+      3. Select a satellite constellation and click <b>DOWNLOAD LIVE TLE DATA</b>.<br>
+      4. All tabs will become active.
     </div>
     """, unsafe_allow_html=True)
     st.stop()
 
 sats = parse_tles(st.session_state["tle_data"], limit=sat_limit)
 if not sats:
-    st.error("TLE ayristirma basarisiz.")
+    st.error("TLE parsing failed.")
     st.stop()
 
-# SEKMELERs
+# TABS
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "GÖSTERGE PANELİ",
-    "YAKINSAMA ANALİZİ",
-    "KENDİ UYDUN",
-    "CANLI SİMÜLASYON",
-    "3B YÖRÜNGE & ZEMİN İZİ",
-    "YÖRÜNGE ELEMANLARI",
-    "METODOLOJİ",
+    "DASHBOARD",
+    "CONJUNCTION ANALYSIS",
+    "YOUR SATELLITE",
+    "LIVE SIMULATION",
+    "3D ORBIT & GROUND TRACK",
+    "ORBITAL ELEMENTS",
+    "METHODOLOGY",
 ])
 
-# ── TAB 1: GÖSTERGE PANELİ ───────────────────────────────────────────────────
+# ── TAB 1: DASHBOARD ───────────────────────────────────────────────────
 with tab1:
-    with st.spinner("Apsis filtresi + yakinsama analizi..."):
-        df, n_filtered, n_total = compute_conjunctions(sats, window_hrs, sigma_km)
+    with st.spinner("Apsis filter + conjunction analysis..."):
+        df, n_filtered, n_total = compute_conjunctions(sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg)
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     st.markdown(f"""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
-         color:#4a6880; text-align:right; margin-bottom:14px;">Son güncelleme: {now_str}</div>""",
+         color:#4a6880; text-align:right; margin-bottom:14px;">Last update: {now_str}</div>""",
         unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.metric("İzlenen Uydu", len(sats))
+        st.metric("Tracked Satellites", len(sats))
     with c2:
-        st.metric("Toplam Çift", n_total)
+        st.metric("Total Pairs", n_total)
     with c3:
-        st.metric("Apsis Filtresi Geçen", n_total - n_filtered)
+        st.metric("Passed Apsis Filter", n_total - n_filtered)
     with c4:
         n_conj = len(df) if not df.empty else 0
-        st.metric("Yakinsama Olayi (<500km)", n_conj)
+        st.metric("Conjunction Events (<500km)", n_conj)
     with c5:
-        n_crit = len(df[df["Risk Seviyesi"] == "KRİTİK"]) if not df.empty else 0
-        st.metric("Kritik Risk", n_crit)
+        n_crit = len(df[df["Risk Level"] == "CRITICAL"]) if not df.empty else 0
+        st.metric("Critical Risk", n_crit)
 
     if n_filtered > 0:
         st.markdown(f"""<div class="info-panel">
-        <b>Apsis Filtresi:</b> {n_filtered} çift yükseklik bantları örtüşmediği için
-        yörünge ilerletmesine gerek kalmadan elendi — hesaplama süresi
-        %{round(n_filtered/n_total*100,1)} oranında azaltıldı.
+        <b>Apsis Filter:</b> {n_filtered} pairs filtered without orbit propagation
+        due to non-overlapping altitude bands — computation time reduced by
+        %{round(n_filtered/n_total*100,1)}.
         </div>""", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     if df.empty:
-        st.success(f"{window_hrs} saatlik pencerede 500 km altı yakınsama tespit edilmedi.")
+        st.success(f"No conjunctions below 500 km detected in {window_hrs}-hour window.")
     else:
-        # Dilüsyon uyarısı
-        n_dil = df["Dilüsyon"].sum() if not df.empty else 0
+        # Dilution warning
+        n_dil = df["Dilution"].sum() if not df.empty else 0
         if n_dil > 0:
             st.markdown(f"""<div class="warn-panel">
-            <b>OLASILIK SEYRELMESİ UYARISI:</b> {int(n_dil)} olayda geniş kovaryans
-            Pc değerini maskeliyor olabilir. Yakınsama Analizi sekmesinden Max-Pc
-            değerlerini kontrol edin.
+            <b>PROBABILITY DILUTION WARNING:</b> Wide covariance in {int(n_dil)} events
+            may be masking Pc values. Check Max-Pc values in Conjunction Analysis tab.
             </div>""", unsafe_allow_html=True)
 
-        show_cols = ["TCA (UTC)", "Obje A", "Obje B", "Mesafe (km)",
-                     "Görecel Hız (km/s)", "Pc (bilimsel)", "Pc Max",
-                     "Mahalanobis Md", "Ec (J/g)", "Risk Seviyesi"]
-        RISK_COLORS = {"KRİTİK":"#ff2b4d","YÜKSEK":"#ff6b00","ORTA":"#ffaa00","DÜŞÜK":"#00ff9d"}
+        show_cols = ["TCA (UTC)", "Object A", "Object B", "Distance (km)",
+                     "Relative Velocity (km/s)", "Pc (scientific)", "Pc Max",
+                     "Mahalanobis Md", "Ec (J/g)", "Risk Level"]
+        RISK_COLORS = {"CRITICAL":"#ff2b4d","HIGH":"#ff6b00","MEDIUM":"#ffaa00","LOW":"#00ff9d"}
         MONO = "font-family:'Space Mono',monospace; font-size:0.76rem;"
 
         df_show = df[show_cols].copy()
         styled = (
             df_show.style
             .map(lambda v: f"color:{RISK_COLORS.get(str(v),'#b8cfe0')};font-weight:bold;{MONO}",
-                 subset=["Risk Seviyesi"])
-            .map(lambda v: f"color:#00c8ff;{MONO}", subset=["Pc (bilimsel)"])
+                 subset=["Risk Level"])
+            .map(lambda v: f"color:#00c8ff;{MONO}", subset=["Pc (scientific)"])
             .map(lambda v: f"color:#ff9060;{MONO}", subset=["Pc Max"])
             .map(lambda v: (f"color:#ff2b4d;{MONO}" if float(v) < 1.5 else f"color:#b8cfe0;{MONO}"),
                  subset=["Mahalanobis Md"])
             .map(lambda v: (f"color:#ff2b4d;{MONO}" if float(v) >= 40 else f"color:#b8cfe0;{MONO}"),
                  subset=["Ec (J/g)"])
-            .format({"Mesafe (km)":"{:.3f}", "Görecel Hız (km/s)":"{:.3f}",
+            .format({"Distance (km)":"{:.3f}", "Relative Velocity (km/s)":"{:.3f}",
                      "Pc Max":"{:.3e}", "Mahalanobis Md":"{:.2f}", "Ec (J/g)":"{:.1f}"})
             .set_properties(**{"font-family":"Space Mono,monospace","font-size":"0.76rem"})
         )
         csv_bytes = df_show.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("Raporu CSV Olarak Indir", data=csv_bytes,
-            file_name=f"yakinsama_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
+        st.download_button("Download Report as CSV", data=csv_bytes,
+            file_name=f"conjunction_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", mime="text/csv")
         st.dataframe(styled, use_container_width=True)
 
-# ── TAB 2: YAKINSAMA ANALİZİ ─────────────────────────────────────────────────
+# ── TAB 2: CONJUNCTION ANALYSIS ─────────────────────────────────────────────────
 with tab2:
     if df is None or df.empty:
-        st.success("Seçili pencerede kritik yakınsama olayı yok.")
+        st.success("No critical conjunction events in selected window.")
     else:
-        st.markdown("**Detaylı İnceleme — Olay Seçin**")
-        options = [f"{r['Obje A']}  <->  {r['Obje B']}  |  TCA {r['TCA (UTC)']}  |  {r['Mesafe (km)']} km"
+        st.markdown("**Detailed Review — Select Event**")
+        options = [f"{r['Object A']}  <->  {r['Object B']}  |  TCA {r['TCA (UTC)']}  |  {r['Distance (km)']} km"
                    for _, r in df.iterrows()]
-        sel = st.selectbox("Yakinsama olayi", options, label_visibility="collapsed")
+        sel = st.selectbox("Conjunction event", options, label_visibility="collapsed")
         idx = options.index(sel)
         row = df.iloc[idx]
 
-        # Dilüsyon uyarısı
-        if row["Dilüsyon"]:
+        # Dilution warning
+        if row["Dilution"]:
             st.markdown(f"""<div class="crit-panel">
-            <b>OLASILIK SEYRELMESİ:</b> {row["Dilüsyon Mesajı"]}
+            <b>PROBABILITY DILUTION:</b> {row["Dilution Message"]}
             </div>""", unsafe_allow_html=True)
 
-        # Grafik + gauge
+        # Plot + gauge
         col_l, col_r = st.columns([2, 1])
         with col_l:
             st.plotly_chart(fig_distance_profile(
-                row["_dist_arr"], window_hrs, row["Mesafe (km)"], sigma_km),
+                row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km),
                 use_container_width=True)
         with col_r:
-            st.plotly_chart(fig_risk_gauge(row["Pc (izotropik)"]), use_container_width=True)
+            st.plotly_chart(fig_risk_gauge(row["Pc (isotropic)"]), use_container_width=True)
 
-        # Pc karşılaştırması
-        st.markdown("**Çarpışma Olasılığı Model Karşılaştırması**")
+        # Pc comparison
+        st.markdown("**Collision Probability Model Comparison**")
         pc_cols = st.columns(3)
         with pc_cols[0]:
-            st.metric("Chan 1997 (İzotropik)", f"{row['Pc (izotropik)']:.3e}")
+            st.metric("Chan 1997 (Isotropic)", f"{row['Pc (isotropic)']:.3e}")
         with pc_cols[1]:
             st.metric("Foster 1992 (2D-Pc)", f"{row['Pc (Foster 2D)']:.3e}")
         with pc_cols[2]:
-            st.metric("Max Pc (En Kötü Senaryo)", f"{row['Pc Max']:.3e}")
+            st.metric("Max Pc (Worst Case)", f"{row['Pc Max']:.3e}")
 
-        # Mahalanobis testi
-        mah_color = "#ff2b4d" if row["2D-Pc Geçerli"] != "2D-Pc Geçerli" else "#00ff9d"
+        # Mahalanobis test
+        mah_color = "#ff2b4d" if row["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
         st.markdown(f"""<div class="info-panel">
-        <b>Mahalanobis Mesafesi Testi:</b> Md = {row['Mahalanobis Md']:.3f} — 
-        <span style="color:{mah_color};">{row['2D-Pc Geçerli']}</span><br>
-        <small>Md < 1.5 → doğrusal hareket varsayımı çöküyor → 3D-Pc gerekli (CARA metodolojisi)</small>
+        <b>Mahalanobis Distance Test:</b> Md = {row['Mahalanobis Md']:.3f} —
+        <span style="color:{mah_color};">{row['2D-Pc Valid']}</span><br>
+        <small>Md < 1.5 → linear motion assumption breaks down → 3D-Pc required (CARA methodology)</small>
         </div>""", unsafe_allow_html=True)
 
-        # Parçalanma analizi
-        frag = fragmentation_probability(row["Görecel Hız (km/s)"])
-        st.markdown("**Çarpışma Sonucu Analizi (Collision Consequence)**")
+        # Fragmentation analysis
+        frag = fragmentation_probability(row["Relative Velocity (km/s)"])
+        st.markdown("**Collision Consequence Analysis**")
         fc1, fc2, fc3 = st.columns(3)
         with fc1:
-            st.metric("Özgül Kinetik Enerji (J/g)", f"{frag['E_c_J_per_g']:.1f}")
+            st.metric("Specific Kinetic Energy (J/g)", f"{frag['E_c_J_per_g']:.1f}")
         with fc2:
-            st.metric("Parçalanma Seviyesi", frag["level"])
+            st.metric("Fragmentation Level", frag["level"])
         with fc3:
-            st.metric("Tahmini Enkaz Nesnesi", frag["est_debris"])
+            st.metric("Estimated Debris Objects", frag["est_debris"])
         st.markdown(f"""<div class="info-panel" style="border-left-color:{frag['color']};">
         <b>{frag['level']}:</b> {frag['desc']}<br>
-        <small>Ec ≥ 40 J/g → Katastrofik parçalanma (Kessler Sendromu katkısı)</small>
+        <small>Ec ≥ 40 J/g → Catastrophic fragmentation (Kessler Syndrome contribution)</small>
         </div>""", unsafe_allow_html=True)
 
-        # Tam parametre tablosu
-        st.markdown("**Tam Olay Parametreleri**")
+        # Full parameter table
+        st.markdown("**Full Event Parameters**")
         det = {
-            "Obje A": row["Obje A"], "Obje B": row["Obje B"],
+            "Object A": row["Object A"], "Object B": row["Object B"],
             "TCA (UTC)": row["TCA (UTC)"],
-            "Iskala Mesafesi (km)": row["Mesafe (km)"],
-            "Görecel Hız (km/s)": row["Görecel Hız (km/s)"],
-            "Konum Belirsizligi sigma (km)": sigma_km,
+            "Miss Distance (km)": row["Distance (km)"],
+            "Relative Velocity (km/s)": row["Relative Velocity (km/s)"],
+            "Position Uncertainty sigma (km)": sigma_km,
             "Hard-Body Radius HBR (km)": hbr_km,
-            "Pc — Chan 1997 Izotropik": f"{row['Pc (izotropik)']:.3e}",
+            "Pc — Chan 1997 Isotropic": f"{row['Pc (isotropic)']:.3e}",
             "Pc — Foster 1992 2D": f"{row['Pc (Foster 2D)']:.3e}",
-            "Pc — Maksimum (En Kötü Senaryo)": f"{row['Pc Max']:.3e}",
-            "Mahalanobis Mesafesi Md": row["Mahalanobis Md"],
-            "2D-Pc Gecerliligi": row["2D-Pc Geçerli"],
-            "Olasılık Seyrelmesi": "EVET" if row["Dilüsyon"] else "HAYIR",
-            "Özgül Kinetik Enerji (J/g)": row["Ec (J/g)"],
-            "Parçalanma Seviyesi": row["Parçalanma Seviyesi"],
-            "Tahmini Enkaz Nesnesi": row["Tahmini Enkaz"],
-            "Risk Seviyesi (NASA STD-8719.14)": row["Risk Seviyesi"],
+            "Pc — Maximum (Worst Case)": f"{row['Pc Max']:.3e}",
+            "Mahalanobis Distance Md": row["Mahalanobis Md"],
+            "2D-Pc Validity": row["2D-Pc Valid"],
+            "Probability Dilution": "YES" if row["Dilution"] else "NO",
+            "Specific Kinetic Energy (J/g)": row["Ec (J/g)"],
+            "Fragmentation Level": row["Fragmentation Level"],
+            "Estimated Debris Objects": row["Estimated Debris"],
+            "Risk Level (NASA STD-8719.14)": row["Risk Level"],
         }
-        df_det = pd.DataFrame(det.items(), columns=["Parametre", "Değer"])
+        df_det = pd.DataFrame(det.items(), columns=["Parameter", "Value"])
         st.dataframe(df_det, use_container_width=True, hide_index=True)
 
-# ── TAB 3: KENDİ UYDUN ───────────────────────────────────────────────────────
+# ── TAB 3: YOUR SATELLITE ───────────────────────────────────────────────────────
 with tab3:
-    st.markdown("## Kendi Uydunu Analiz Et")
+    st.markdown("## Analyze Your Satellite")
     if "my_sat" not in st.session_state:
         st.markdown("""<div class="warn-panel">
-        <b>Henüz kendi uydunuzu yüklemediniz.</b><br>
-        Sol paneldeki <b>2 — KENDİ UYDUNU GİR (TLE)</b> bölümünden TLE verilerinizi girin
-        ve <b>MANUEL TLE YÜKLE</b> butonuna tıklayın.
+        <b>You haven't loaded your satellite yet.</b><br>
+        Enter your TLE data in the <b>2 — ENTER YOUR SATELLITE (TLE)</b> section
+        in the left panel and click <b>LOAD MANUAL TLE</b>.
         </div>""", unsafe_allow_html=True)
     elif "tle_data" not in st.session_state:
         st.markdown("""<div class="warn-panel">
-        <b>Filo verisi yüklenmemiş.</b><br>
-        Sol panelden önce otomatik TLE indirme işlemini yapın; ardından kendi uydunuzla
-        karşılaştırma yapılabilir.
+        <b>Fleet data not loaded.</b><br>
+        First perform automatic TLE download from the left panel; then comparison
+        with your satellite can be done.
         </div>""", unsafe_allow_html=True)
     else:
         my_sat = st.session_state["my_sat"]
         st.markdown(f"""<div class="info-panel">
-        <b>Aktif uydu:</b> {my_sat.name}&nbsp;&nbsp;|&nbsp;&nbsp;
-        <b>Filo:</b> {st.session_state.get('loaded_group','—')}&nbsp;&nbsp;|&nbsp;&nbsp;
-        <b>Analiz penceresi:</b> {window_hrs} saat&nbsp;&nbsp;|&nbsp;&nbsp;
+        <b>Active satellite:</b> {my_sat.name}&nbsp;&nbsp;|&nbsp;&nbsp;
+        <b>Fleet:</b> {st.session_state.get('loaded_group','—')}&nbsp;&nbsp;|&nbsp;&nbsp;
+        <b>Analysis window:</b> {window_hrs} hours&nbsp;&nbsp;|&nbsp;&nbsp;
         <b>σ:</b> {sigma_km} km
         </div>""", unsafe_allow_html=True)
 
-        with st.spinner(f"{my_sat.name} için yakınsama analizi çalışıyor..."):
-            df_my = compute_conjunctions_custom(my_sat, sats, window_hrs, sigma_km)
+        with st.spinner(f"Running conjunction analysis for {my_sat.name}..."):
+            df_my = compute_conjunctions_custom(my_sat, sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg)
 
         if df_my.empty:
-            st.success(f"{window_hrs} saatlik pencerede {my_sat.name} için 500 km altı yakınsama yok.")
+            st.success(f"No conjunctions below 500 km for {my_sat.name} in {window_hrs}-hour window.")
         else:
-            n_crit_my = len(df_my[df_my["Risk Seviyesi"] == "KRİTİK"])
-            n_high_my = len(df_my[df_my["Risk Seviyesi"] == "YÜKSEK"])
+            n_crit_my = len(df_my[df_my["Risk Level"] == "CRITICAL"])
+            n_high_my = len(df_my[df_my["Risk Level"] == "HIGH"])
 
             c1m, c2m, c3m, c4m = st.columns(4)
-            with c1m: st.metric("Toplam Yakınsama", len(df_my))
-            with c2m: st.metric("Kritik Risk", n_crit_my)
-            with c3m: st.metric("Yüksek Risk", n_high_my)
-            with c4m: st.metric("Min. Mesafe (km)", f"{df_my['Mesafe (km)'].min():.2f}")
+            with c1m: st.metric("Total Conjunctions", len(df_my))
+            with c2m: st.metric("Critical Risk", n_crit_my)
+            with c3m: st.metric("High Risk", n_high_my)
+            with c4m: st.metric("Min. Distance (km)", f"{df_my['Distance (km)'].min():.2f}")
 
-            st.markdown("**Yakınsamalar — Risk Tablosu**")
-            RISK_COLORS = {"KRİTİK":"#ff2b4d","YÜKSEK":"#ff6b00","ORTA":"#ffaa00","DÜŞÜK":"#00ff9d"}
+            st.markdown("**Conjunctions — Risk Table**")
+            RISK_COLORS = {"CRITICAL":"#ff2b4d","HIGH":"#ff6b00","MEDIUM":"#ffaa00","LOW":"#00ff9d"}
             MONO = "font-family:'Space Mono',monospace; font-size:0.76rem;"
-            show_c = ["TCA (UTC)","Obje A","Obje B","Mesafe (km)","Görecel Hız (km/s)",
-                      "Pc (bilimsel)","Pc Max","Mahalanobis Md","Ec (J/g)","Risk Seviyesi"]
+            show_c = ["TCA (UTC)","Object A","Object B","Distance (km)","Relative Velocity (km/s)",
+                      "Pc (scientific)","Pc Max","Mahalanobis Md","Ec (J/g)","Risk Level"]
             df_my_show = df_my[show_c].copy()
             styled_my = (
                 df_my_show.style
                 .map(lambda v: f"color:{RISK_COLORS.get(str(v),'#b8cfe0')};font-weight:bold;{MONO}",
-                     subset=["Risk Seviyesi"])
-                .map(lambda v: f"color:#00c8ff;{MONO}", subset=["Pc (bilimsel)"])
+                     subset=["Risk Level"])
+                .map(lambda v: f"color:#00c8ff;{MONO}", subset=["Pc (scientific)"])
                 .map(lambda v: f"color:#ff9060;{MONO}", subset=["Pc Max"])
                 .map(lambda v: (f"color:#ff2b4d;{MONO}" if float(v) < 1.5 else f"color:#b8cfe0;{MONO}"),
                      subset=["Mahalanobis Md"])
-                .format({"Mesafe (km)":"{:.3f}","Görecel Hız (km/s)":"{:.3f}",
+                .format({"Distance (km)":"{:.3f}","Relative Velocity (km/s)":"{:.3f}",
                          "Pc Max":"{:.3e}","Mahalanobis Md":"{:.2f}","Ec (J/g)":"{:.1f}"})
                 .set_properties(**{"font-family":"Space Mono,monospace","font-size":"0.76rem"})
             )
             csv_my = df_my_show.to_csv(index=False).encode("utf-8-sig")
-            st.download_button("Raporu CSV Olarak İndir", data=csv_my,
-                file_name=f"kendi_uydu_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            st.download_button("Download Report as CSV", data=csv_my,
+                file_name=f"my_satellite_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv")
             st.dataframe(styled_my, use_container_width=True)
 
-            # Seçili çift için detaylı analiz
+            # Detailed analysis for selected pair
             st.markdown("---")
-            st.markdown("**Detaylı Çift Analizi — Olay Seçin**")
-            opts_my = [f"{r['Obje B']}  |  TCA {r['TCA (UTC)']}  |  {r['Mesafe (km)']} km"
+            st.markdown("**Detailed Pair Analysis — Select Event**")
+            opts_my = [f"{r['Object B']}  |  TCA {r['TCA (UTC)']}  |  {r['Distance (km)']} km"
                        for _, r in df_my.iterrows()]
-            sel_my  = st.selectbox("Olay seç", opts_my, label_visibility="collapsed", key="my_sel")
+            sel_my  = st.selectbox("Select event", opts_my, label_visibility="collapsed", key="my_sel")
             idx_my  = opts_my.index(sel_my)
             row_my  = df_my.iloc[idx_my]
 
-            if row_my["Dilüsyon"]:
+            if row_my["Dilution"]:
                 st.markdown(f"""<div class="crit-panel">
-                <b>OLASILIK SEYRELMESİ:</b> {row_my["Dilüsyon Mesajı"]}</div>""",
+                <b>PROBABILITY DILUTION:</b> {row_my["Dilution Message"]}</div>""",
                 unsafe_allow_html=True)
 
             col_l, col_r = st.columns([2, 1])
             with col_l:
                 st.plotly_chart(
-                    fig_distance_profile(row_my["_dist_arr"], window_hrs, row_my["Mesafe (km)"], sigma_km),
+                    fig_distance_profile(row_my["_dist_arr"], window_hrs, row_my["Distance (km)"], sigma_km),
                     use_container_width=True)
             with col_r:
-                st.plotly_chart(fig_risk_gauge(row_my["Pc (izotropik)"]), use_container_width=True)
+                st.plotly_chart(fig_risk_gauge(row_my["Pc (isotropic)"]), use_container_width=True)
 
             pc_c = st.columns(3)
-            with pc_c[0]: st.metric("Chan 1997 (İzotropik)", f"{row_my['Pc (izotropik)']:.3e}")
+            with pc_c[0]: st.metric("Chan 1997 (Isotropic)", f"{row_my['Pc (isotropic)']:.3e}")
             with pc_c[1]: st.metric("Foster 1992 (2D-Pc)",   f"{row_my['Pc (Foster 2D)']:.3e}")
             with pc_c[2]: st.metric("Max Pc",                 f"{row_my['Pc Max']:.3e}")
 
-            mah_c = "#ff2b4d" if row_my["2D-Pc Geçerli"] != "2D-Pc Geçerli" else "#00ff9d"
+            mah_c = "#ff2b4d" if row_my["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
             st.markdown(f"""<div class="info-panel">
-            <b>Mahalanobis Testi:</b> Md = {row_my['Mahalanobis Md']:.3f} —
-            <span style="color:{mah_c};">{row_my['2D-Pc Geçerli']}</span>
+            <b>Mahalanobis Test:</b> Md = {row_my['Mahalanobis Md']:.3f} —
+            <span style="color:{mah_c};">{row_my['2D-Pc Valid']}</span>
             </div>""", unsafe_allow_html=True)
 
-            frag_my = fragmentation_probability(row_my["Görecel Hız (km/s)"])
+            frag_my = fragmentation_probability(row_my["Relative Velocity (km/s)"])
             fc = st.columns(3)
             with fc[0]: st.metric("Ec (J/g)", f"{frag_my['E_c_J_per_g']:.1f}")
-            with fc[1]: st.metric("Parçalanma", frag_my["level"])
-            with fc[2]: st.metric("Tahmini Enkaz", frag_my["est_debris"])
+            with fc[1]: st.metric("Fragmentation", frag_my["level"])
+            with fc[2]: st.metric("Estimated Debris", frag_my["est_debris"])
 
-            # Simülasyona gönder butonu
+            # Send to simulation button
             st.markdown("---")
-            if st.button("🔭 Bu Çifti Canlı Simülasyonda Göster", key="my_to_sim"):
+            if st.button("🔭 Show This Pair in Live Simulation", key="my_to_sim"):
                 st.session_state["sim_sat_a"] = row_my["_s1"]
                 st.session_state["sim_sat_b"] = row_my["_s2"]
-                st.success("Çift 'CANLI SİMÜLASYON' sekmesine aktarıldı.")
+                st.success("Pair transferred to 'LIVE SIMULATION' tab.")
 
 
-# ── TAB 4: CANLI SİMÜLASYON ──────────────────────────────────────────────────
+# ── TAB 4: LIVE SIMULATION ──────────────────────────────────────────────────
 with tab4:
-    st.markdown("## Canlı 3D Yörünge Simülasyonu")
+    st.markdown("## Live 3D Orbit Simulation")
     st.markdown("""<div class="info-panel">
-    İki uydu arasındaki karşılaşmayı <b>gerçek zamanlı</b> animasyonla izleyin.
-    Oynat / Durdur / Hız kontrolü ve <b>TCA'ya Git</b> butonu ile risk anını odaklayın.
+    Watch the encounter between two satellites with <b>real-time</b> animation.
+    Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
     </div>""", unsafe_allow_html=True)
 
-    # Uydu seçim kaynağı
+    # Satellite selection source
     if "sim_sat_a" in st.session_state and "sim_sat_b" in st.session_state:
         default_a = st.session_state["sim_sat_a"].name
         default_b = st.session_state["sim_sat_b"].name
         st.markdown(f"""<div class="info-panel">
-        <b>Seçili çift:</b> {default_a} × {default_b}<br>
-        <small>Değiştirmek için aşağıdaki açılır menüleri kullanın.</small>
+        <b>Selected pair:</b> {default_a} × {default_b}<br>
+        <small>Use dropdown menus below to change.</small>
         </div>""", unsafe_allow_html=True)
     else:
         default_a = sats[0].name if sats else ""
@@ -1333,23 +1338,23 @@ with tab4:
 
     sc1, sc2, sc3 = st.columns([2, 2, 1])
     with sc1:
-        sel_a = st.selectbox("Uydu A", sat_names_ext,
+        sel_a = st.selectbox("Satellite A", sat_names_ext,
                              index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
                              key="sim_a")
     with sc2:
-        sel_b = st.selectbox("Uydu B", sat_names_ext,
+        sel_b = st.selectbox("Satellite B", sat_names_ext,
                              index=sat_names_ext.index(default_b) if default_b in sat_names_ext else min(1,len(sat_names_ext)-1),
                              key="sim_b")
     with sc3:
-        sim_hrs = st.slider("Pencere (saat)", 1, 12, 6, key="sim_hrs")
+        sim_hrs = st.slider("Window (hours)", 1, 12, 6, key="sim_hrs")
 
     if sel_a == sel_b:
-        st.warning("Farklı iki uydu seçin.")
+        st.warning("Select two different satellites.")
     else:
         sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
         sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
 
-        if st.button("▶ SİMÜLASYONU BAŞLAT", key="start_sim"):
+        if st.button("▶ START SIMULATION", key="start_sim"):
             st.session_state["sim_sat_a"] = sat_obj_a
             st.session_state["sim_sat_b"] = sat_obj_b
             st.session_state["run_sim"]   = True
@@ -1358,25 +1363,25 @@ with tab4:
            "sim_sat_a" in st.session_state and "sim_sat_b" in st.session_state:
             sa = st.session_state["sim_sat_a"]
             sb = st.session_state["sim_sat_b"]
-            with st.spinner("Yörüngeler hesaplanıyor ve animasyon oluşturuluyor..."):
+            with st.spinner("Calculating orbits and creating animation..."):
                 anim_fig, tca_i, tca_d, dists_arr, jd_arr = \
                     fig_animated_conjunction(sa, sb, sim_hrs)
 
-            # TCA bilgisi
+            # TCA info
             tca_utc = ts.tt_jd(jd_arr[tca_i]).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
             sev_sim, col_sim = risk_level(
                 collision_probability_isotropic(tca_d, sigma_km))
             tc1, tc2, tc3, tc4 = st.columns(4)
-            with tc1: st.metric("TCA Zamanı (UTC)", tca_utc)
-            with tc2: st.metric("Min. Mesafe (km)", f"{tca_d:.3f}")
-            with tc3: st.metric("TCA T+ (dk)", tca_i * 2)
+            with tc1: st.metric("TCA Time (UTC)", tca_utc)
+            with tc2: st.metric("Min. Distance (km)", f"{tca_d:.3f}")
+            with tc3: st.metric("TCA T+ (min)", tca_i * 2)
             with tc4: st.metric("Risk", sev_sim)
 
-            # 3D animasyon
+            # 3D animation
             st.plotly_chart(anim_fig, use_container_width=True)
 
-            # Mesafe profili (statik)
-            st.markdown("**Mesafe Profili (Tam Pencere)**")
+            # Distance profile (static)
+            st.markdown("**Distance Profile (Full Window)**")
             step_m_sim = 2
             t_ax = np.arange(len(dists_arr)) * step_m_sim / 60.0
             fig_dp_sim = go.Figure()
@@ -1384,7 +1389,7 @@ with tab4:
                                  annotation_text="HBR (20 m)")
             fig_dp_sim.add_trace(go.Scatter(x=t_ax, y=dists_arr, mode="lines",
                 line=dict(color="#00c8ff", width=1.5), fill="tozeroy",
-                fillcolor="rgba(0,200,255,.04)", name="Mesafe (km)"))
+                fillcolor="rgba(0,200,255,.04)", name="Distance (km)"))
             fig_dp_sim.add_trace(go.Scatter(
                 x=[t_ax[tca_i]], y=[dists_arr[tca_i]],
                 mode="markers+text",
@@ -1394,9 +1399,9 @@ with tab4:
                 name="TCA"))
             fig_dp_sim.update_layout(
                 **DARK, height=240,
-                xaxis=dict(title="Zaman (saat)", gridcolor="#1a2740", zeroline=False),
-                yaxis=dict(title="Mesafe (km)", gridcolor="#1a2740", zeroline=False),
-                title=dict(text=f"Mesafe Profili — {sa.name} × {sb.name}",
+                xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
+                yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
+                title=dict(text=f"Distance Profile — {sa.name} × {sb.name}",
                     font=dict(size=11, family="Barlow Condensed", color="#00c8ff"), x=0.01),
                 margin=dict(l=10, r=10, t=35, b=10),
                 legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
@@ -1404,152 +1409,152 @@ with tab4:
             st.plotly_chart(fig_dp_sim, use_container_width=True)
 
 
-# ── TAB 5: 3B YÖRÜNGE & ZEMİN İZİ ───────────────────────────────────────────
+# ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
     c1_3d, c2_3d = st.columns([3, 2])
     with c1_3d:
-        st.markdown("**3 Boyutlu Yörünge Görünümü**")
-        with st.spinner("Dünya dokusu yükleniyor..."):
+        st.markdown("**3D Orbit View**")
+        with st.spinner("Loading Earth texture..."):
             st.plotly_chart(fig_3d_orbits(sats), use_container_width=True, height=560)
     with c2_3d:
-        st.markdown("**Zemin İzi Haritası**")
-        with st.spinner("Hesaplanıyor..."):
+        st.markdown("**Ground Track Map**")
+        with st.spinner("Calculating..."):
             st.plotly_chart(fig_ground_tracks(sats), use_container_width=True)
         st.markdown("""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
              color:#2a4060; line-height:2; margin-top:8px;">
-          Her uydu için yaklasik 95 dakikalık iz gosterilmektedir.<br>
-          Buyuk noktalar anlık konumu temsil eder.<br>
-          Zemin izi SGP4/SDP4 propagatörü ile hesaplanmistir.
+          Approximately 95-minute track shown for each satellite.<br>
+          Large dots represent current position.<br>
+          Ground track calculated with SGP4/SDP4 propagator.
         </div>""", unsafe_allow_html=True)
 
-# ── TAB 6: YÖRÜNGE ELEMANLARI ────────────────────────────────────────────────
+# ── TAB 6: ORBITAL ELEMENTS ────────────────────────────────────────────────
 with tab6:
-    st.markdown("## Yörünge Elemanları ve Uzay Dağılımı")
+    st.markdown("## Orbital Elements and Space Distribution")
     elems_list = [(sat.name, get_orbital_elements(sat)) for sat in sats]
 
     col_a, col_b = st.columns([2, 3])
     with col_a:
-        st.markdown("**Kepler Yörünge Elemanları Tablosu**")
+        st.markdown("**Kepler Orbital Elements Table**")
         rows = []
         for name, elems in elems_list:
             if elems:
                 rows.append({
-                    "Uydu": name[:18],
-                    "İrtifa (km)": elems.get("Ortalama İrtifa (km)", "-"),
-                    "Eğim (°)": elems.get("Eğim i (°)", "-"),
-                    "Dışmerkezlik": elems.get("Dışmerkezlik e", "-"),
-                    "Periyot (dk)": elems.get("Yörünge Periyodu (dk)", "-"),
+                    "Satellite": name[:18],
+                    "Altitude (km)": elems.get("Mean Altitude (km)", "-"),
+                    "Inclination (°)": elems.get("Inclination i (°)", "-"),
+                    "Eccentricity": elems.get("Eccentricity e", "-"),
+                    "Period (min)": elems.get("Orbital Period (min)", "-"),
                 })
         if rows:
             df_elems = pd.DataFrame(rows)
             st.dataframe(df_elems, use_container_width=True, hide_index=True)
     with col_b:
-        st.markdown("**İrtifa / Eğim Dağılımı** (nokta boyutu = dışmerkezlik)")
+        st.markdown("**Altitude / Inclination Distribution** (dot size = eccentricity)")
         st.plotly_chart(fig_orbital_elements_radar(elems_list), use_container_width=True)
 
-    with st.expander("Seçili Uydu Detayı"):
-        sel_sat = st.selectbox("Uydu seç", [s.name for s in sats], key="elem_sel")
+    with st.expander("Selected Satellite Detail"):
+        sel_sat = st.selectbox("Select satellite", [s.name for s in sats], key="elem_sel")
         sel_elems = next((e for n, e in elems_list if n == sel_sat), {})
         if sel_elems:
-            df_single = pd.DataFrame(sel_elems.items(), columns=["Eleman", "Değer"])
+            df_single = pd.DataFrame(sel_elems.items(), columns=["Element", "Value"])
             st.dataframe(df_single, use_container_width=True, hide_index=True)
 
-# ── TAB 7: METODOLOJİ ────────────────────────────────────────────────────────
+# ── TAB 7: METHODOLOGY ────────────────────────────────────────────────────────
 with tab7:
-    st.markdown("## Metodoloji ve Teorik Altyapı")
+    st.markdown("## Methodology and Theoretical Background")
     st.markdown("""
     <div class="info-panel">
-    <b>1. Yörünge Propagasyonu — SGP4/SDP4 (Skyfield)</b><br>
-    TLE (Two-Line Element) verilerinin konum vektörlerine dönüştürülmesinde NORAD standardı
-    <b>Basitleştirilmiş Genel Pertürbasyon-4 (SGP4)</b> modeli kullanılmaktadır.
-    SGP4, yerçekimi harmoniklerini, atmosferik sürüklemeyi ve Güneş/Ay üçüncü cisim etkilerini
-    ortalanmış bir kuvvet modeliyle yaklaşık olarak ele alır. Alçak yörüngeli (<2000 km) nesneler
-    için SGP4; yüksek yörüngeli nesneler için SDP4 otomatik olarak devreye girer.<br><br>
-    <b>Performans notu (Tez Bölüm 1):</b> Saf Python/Skyfield saniyede ~1M adım üretirken,
-    Rust/Zig tabanlı <b>Astrora</b> (SIMD ile) 4.8–15M, SatKit (PyO3/Rust) ~3.4M hıza ulaşır.
-    Büyük ölçekli operasyonel simülasyonlar için bu kütüphanelere geçiş önerilir.
+    <b>1. Orbit Propagation — SGP4/SDP4 (Skyfield)</b><br>
+    The NORAD standard <b>Simplified General Perturbations-4 (SGP4)</b> model is used
+    to convert TLE (Two-Line Element) data into position vectors. SGP4 approximately
+    accounts for gravity harmonics, atmospheric drag, and Sun/Moon third-body effects
+    with a centered force model. SGP4 is used for low-orbit (<2000 km) objects;
+    SDP4 automatically engages for high-orbit objects.<br><br>
+    <b>Performance note (Thesis Section 1):</b> Pure Python/Skyfield produces ~1M steps/sec,
+    while Rust/Zig-based <b>Astrora</b> (with SIMD) reaches 4.8–15M, and SatKit (PyO3/Rust) ~3.4M.
+    Transition to these libraries is recommended for large-scale operational simulations.
     </div>
 
     <div class="info-panel">
-    <b>2. Apsis Filtresi — Bölüm 2.1 (ESA/NASA standardı)</b><br>
-    Analiz başlamadan önce tüm uydu çiftleri <b>Apsis (Apoje-Perije) Filtresi</b>'nden geçirilir.
-    Birinci nesnenin <i>perije irtifası q₁</i>, ikinci nesnenin <i>apoje irtifasından Q₂</i>'den yüksekse,
-    bu iki yörünge uzayda hiçbir zaman kesişemez. Matematiksel koşul:<br>
+    <b>2. Apsis Filter — Section 2.1 (ESA/NASA standard)</b><br>
+    Before analysis begins, all satellite pairs pass through the <b>Apsis (Apogee-Perigee) Filter</b>.
+    If the first object's <i>perigee altitude q₁</i> is higher than the second object's <i>apogee altitude Q₂</i>,
+    these two orbits can never intersect in space. Mathematical condition:<br>
     &nbsp;&nbsp;<code>max(q₁, q₂) > min(Q₁, Q₂) + D_th</code><br>
-    Bu filtrenin uygulanması O(N²) hesaplama yükünü, irtifa bantları örtüşmeyen tüm
-    çiftleri eleyerek dramatik biçimde azaltır.
+    Applying this filter dramatically reduces O(N²) computational load by eliminating all
+    pairs with non-overlapping altitude bands.
     </div>
 
     <div class="info-panel">
-    <b>3. TCA Tespiti — 5 Dakika Adımlı Kaba Tarama</b><br>
-    Apsis filtresini geçen çiftler için <b>5 dakikalık sabit zaman adımlarıyla</b>
-    analiz penceresi boyunca Öklid mesafesi hesaplanır. En küçük mesafenin elde edildiği
-    an <b>TCA (Time of Closest Approach — En Yakın Geçiş Zamanı)</b> olarak belirlenir.
-    Daha hassas TCA için Brent yöntemi ile yerel minimizasyon uygulanabilir.
+    <b>3. TCA Detection — 5-Minute Step Coarse Scan</b><br>
+    For pairs passing the apsis filter, Euclidean distance is calculated throughout the
+    analysis window with <b>5-minute fixed time steps</b>. The moment of minimum distance
+    is identified as <b>TCA (Time of Closest Approach)</b>. Local minimization with Brent's
+    method can be applied for more precise TCA.
     </div>
 
     <div class="info-panel">
-    <b>4. Çarpışma Olasılığı — İki Model</b><br>
-    <b>4a. Chan (1997) İzotropik Model:</b> Konum belirsizliğinin her yöne eşit (küresel) dağıldığını
-    varsayan basitleştirilmiş model. Yüksek hızda sonuç verir ancak gerçek asimetrik kovaryansı
-    yansıtmaz. Formül: normal CDF tabanlı kapalı-form yaklaşımı.<br><br>
-    <b>4b. Foster &amp; Estes (1992) 2D-Pc:</b> NASA Uzay Mekiği döneminden bu yana kullanılan
-    endüstri standardı. Çarpışma entegrasyonu, <b>encounter plane</b>'e iz düşürülerek
-    iki boyuta indirgenir. Birleşik kovaryans matrisi (Σ = Cₐ + C_b) oluşturulur ve
-    Gauss dağılımının HBR dairesi üzerindeki 2D integrali hesaplanır:<br>
+    <b>4. Collision Probability — Two Models</b><br>
+    <b>4a. Chan (1997) Isotropic Model:</b> Simplified model assuming position uncertainty
+    is equally (spherically) distributed in all directions. Provides fast results but
+    does not reflect real asymmetric covariance. Formula: normal CDF-based closed-form approximation.<br><br>
+    <b>4b. Foster &amp; Estes (1992) 2D-Pc:</b> Industry standard used since NASA Space Shuttle era.
+    Collision integration is reduced to two dimensions by projecting onto the
+    <b>encounter plane</b>. Combined covariance matrix (Σ = Cₐ + C_b) is created and
+    the 2D integral of Gaussian distribution over HBR circle is calculated:<br>
     &nbsp;&nbsp;<code>Pc = 1/(2π√detΣ) ∬_HBR exp(-½ rᵀΣ⁻¹r) dx dy</code>
     </div>
 
     <div class="info-panel">
-    <b>5. Mahalanobis Mesafesi Testi — Bölüm 3.2 (CARA Metodolojisi)</b><br>
-    2D-Pc'nin <i>"kısa süreli karşılaşma"</i> ve <i>"doğrusal hareket"</i> varsayımları,
-    nesnelerin düşük bağıl hızlarla yaklaştığı durumlarda çöker. CARA metodolojisine göre
-    <b>Mahalanobis mesafesi</b> (Md = miss / σ) bu geçerliliği test eder:<br>
-    &nbsp;&nbsp;Md &lt; 0.5 → 2D-Pc <span style="color:#ff2b4d;">GEÇERSİZ</span> — 3D-Pc / Monte Carlo zorunlu<br>
-    &nbsp;&nbsp;Md &lt; 1.5 → 2D-Pc <span style="color:#ffaa00;">SINIRDA</span> — 3D-Pc tavsiye edilir<br>
-    &nbsp;&nbsp;Md ≥ 1.5 → 2D-Pc <span style="color:#00ff9d;">GEÇERLİ</span>
+    <b>5. Mahalanobis Distance Test — Section 3.2 (CARA Methodology)</b><br>
+    2D-Pc's <i>"short-duration encounter"</i> and <i>"linear motion"</i> assumptions
+    break down when objects approach at low relative velocities. According to CARA methodology,
+    <b>Mahalanobis distance</b> (Md = miss / σ) tests this validity:<br>
+    &nbsp;&nbsp;Md &lt; 0.5 → 2D-Pc <span style="color:#ff2b4d;">INVALID</span> — 3D-Pc / Monte Carlo required<br>
+    &nbsp;&nbsp;Md &lt; 1.5 → 2D-Pc <span style="color:#ffaa00;">BORDERLINE</span> — 3D-Pc recommended<br>
+    &nbsp;&nbsp;Md ≥ 1.5 → 2D-Pc <span style="color:#00ff9d;">VALID</span>
     </div>
 
     <div class="info-panel">
-    <b>6. Olasılık Seyrelmesi (Probability Dilution) — Bölüm 4</b><br>
-    Büyük konum belirsizliği (geniş kovaryans) durumunda Gauss dağılımı uzayda o denli
-    yayılır ki HBR dairesi içine düşen yoğunluk sıfıra yaklaşır — Pc matematiksel olarak
-    küçülür. Bu <b>"sahte güven"</b> (false confidence) problemi, gerçekte tehlikeli bir
-    yakınlaşmayı güvenli zannettirabilir.<br><br>
-    Çözüm araçları: <b>WSPRT</b> (Wald Sıralı Olasılık Oranı Testi) — arka plan riskiyle
-    anlık riski oranlar; <b>Max-Pc Analizi</b> — kovaryans büyüklüğü iteratif olarak
-    değiştirilerek o geometri için matematiksel en yüksek Pc bulunur.
+    <b>6. Probability Dilution — Section 4</b><br>
+    With large position uncertainty (wide covariance), the Gaussian distribution spreads
+    so much in space that the density falling within the HBR circle approaches zero —
+    Pc mathematically decreases. This <b>"false confidence"</b> problem can make a
+    genuinely dangerous close approach appear safe.<br><br>
+    Solution tools: <b>WSPRT</b> (Wald Sequential Probability Ratio Test) — compares
+    instantaneous risk with background risk; <b>Max-Pc Analysis</b> — iteratively varies
+    covariance magnitude to find mathematical maximum Pc for that geometry.
     </div>
 
     <div class="info-panel">
-    <b>7. Risk Sınıflandırması — NASA STD-8719.14</b><br>
-    &nbsp;&nbsp;• <span style="color:#ff2b4d;">Pc &gt; 1×10⁻³ → KRİTİK</span> — Çarpışmadan kaçınma manevrası (CAM) zorunlu<br>
-    &nbsp;&nbsp;• <span style="color:#ff6b00;">Pc &gt; 1×10⁻⁴ → YÜKSEK</span> — CAM değerlendirmesi gerekli<br>
-    &nbsp;&nbsp;• <span style="color:#ffaa00;">Pc &gt; 1×10⁻⁵ → ORTA</span> — Artan izleme frekansı<br>
-    &nbsp;&nbsp;• <span style="color:#00ff9d;">Pc ≤ 1×10⁻⁵ → DÜŞÜK</span> — Rutin izleme yeterli
+    <b>7. Risk Classification — NASA STD-8719.14</b><br>
+    &nbsp;&nbsp;• <span style="color:#ff2b4d;">Pc &gt; 1×10⁻³ → CRITICAL</span> — Collision Avoidance Maneuver (CAM) mandatory<br>
+    &nbsp;&nbsp;• <span style="color:#ff6b00;">Pc &gt; 1×10⁻⁴ → HIGH</span> — CAM evaluation required<br>
+    &nbsp;&nbsp;• <span style="color:#ffaa00;">Pc &gt; 1×10⁻⁵ → MEDIUM</span> — Increased tracking frequency<br>
+    &nbsp;&nbsp;• <span style="color:#00ff9d;">Pc ≤ 1×10⁻⁵ → LOW</span> — Routine tracking sufficient
     </div>
 
     <div class="info-panel">
-    <b>8. Çarpışma Sonucu — Parçalanma Olasılığı Pf (Bölüm 4)</b><br>
-    Yalnızca çarpışma ihtimali değil, olası felaketin büyüklüğü de risk hesabına katılmalıdır.
-    <b>Özgül Kinetik Enerji:</b> Ec = ½ · m_b · v_rel² / m_a (J/g)<br>
-    &nbsp;&nbsp;Ec ≥ 40 J/g → Katastrofik parçalanma — <b>Kessler Sendromu</b> katkısı<br>
-    &nbsp;&nbsp;Ec ≥ 10 J/g → Ciddi hasar ve önemli enkaz bulutu<br>
-    &nbsp;&nbsp;Ec ≥ 1 J/g  → Kısmi hasar<br>
-    Kessler Sendromu: Çarpışmaların yeni çarpışmaları tetiklediği zincirleme reaksiyon.
+    <b>8. Collision Consequence — Fragmentation Probability Pf (Section 4)</b><br>
+    Not only collision probability, but also the magnitude of potential disaster should
+    be included in risk calculation. <b>Specific Kinetic Energy:</b> Ec = ½ · m_b · v_rel² / m_a (J/g)<br>
+    &nbsp;&nbsp;Ec ≥ 40 J/g → Catastrophic fragmentation — <b>Kessler Syndrome</b> contribution<br>
+    &nbsp;&nbsp;Ec ≥ 10 J/g → Severe damage and significant debris cloud<br>
+    &nbsp;&nbsp;Ec ≥ 1 J/g  → Partial damage<br>
+    Kessler Syndrome: Chain reaction where collisions trigger new collisions.
     </div>
 
     <div class="info-panel">
-    <b>9. Veri Kaynağı — Space-Track GP Sınıfı</b><br>
-    TLE verileri <b>18. Uzay Savunma Filosu (ABD Uzay Kuvvetleri)</b> tarafından işletilen
-    space-track.org üzerinden <b>GP (Genel Pertürbasyon)</b> uç noktasından çekilmektedir.
-    Eski TLE/2LE formatı yerine JSON/CSV tabanlı <b>OMM (Orbit Mean-Elements Message)</b>
-    formatına geçiş önerilir. API oran sınırı aşımından kaçınmak için toplu NORAD ID sorguları
-    ve rastgele zamanlanmış güncelleme döngüleri kullanılmalıdır.
+    <b>9. Data Source — Space-Track GP Class</b><br>
+    TLE data is pulled from the <b>GP (General Perturbations)</b> endpoint on space-track.org,
+    operated by the <b>18th Space Defense Squadron (US Space Force)</b>. Transition to
+    JSON/CSV-based <b>OMM (Orbit Mean-Elements Message)</b> format instead of legacy TLE/2LE
+    format is recommended. Bulk NORAD ID queries and randomly scheduled update cycles should
+    be used to avoid API rate limit violations.
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("### Referanslar")
+    st.markdown("### References")
     st.markdown("""<div style="font-family:'Space Mono',monospace; font-size:.7rem;
          color:#4a6880; line-height:2.4;">
     Foster, J.L. &amp; Estes, H.S. (1992). A parametric analysis of orbital debris collision probability
