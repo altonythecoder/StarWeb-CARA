@@ -748,9 +748,10 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
 def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: bool = True, show_tca: bool = True):
     """
     3D Plotly figure showing two satellites with real-time animation.
+    Robust version with error handling and fallback.
     """
     now = ts.now()
-    step_min = max(2, window_hrs * 60 // 360)   # ensure at most 360 frames
+    step_min = max(2, window_hrs * 60 // 360)   # at most 360 frames
     n_frames = min(window_hrs * 60 // step_min, 360)
     if n_frames < 2:
         # Not enough frames – return empty figure
@@ -761,14 +762,27 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
 
     # Full orbit paths (static background)
     orb_off = np.linspace(0, 96, orbit_pts) / 1440.0
-    orb_a = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
-    orb_b = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
+    try:
+        orb_a = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
+        orb_b = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
+    except Exception:
+        orb_a = np.full((3, orbit_pts), np.nan)
+        orb_b = np.full((3, orbit_pts), np.nan)
 
     # Animation step positions
     anim_off = np.arange(n_frames) * step_min / 1440.0
     anim_jd = now.tt + anim_off
-    pos_a = sat_a.at(ts.tt_jd(anim_jd)).position.km   # (3, n_frames)
-    pos_b = sat_b.at(ts.tt_jd(anim_jd)).position.km
+    try:
+        pos_a = sat_a.at(ts.tt_jd(anim_jd)).position.km   # (3, n_frames)
+        pos_b = sat_b.at(ts.tt_jd(anim_jd)).position.km
+    except Exception:
+        pos_a = np.full((3, n_frames), np.nan)
+        pos_b = np.full((3, n_frames), np.nan)
+
+    # Replace NaN or inf with a large number (will not be plotted)
+    pos_a = np.nan_to_num(pos_a, nan=1e6, posinf=1e6, neginf=-1e6)
+    pos_b = np.nan_to_num(pos_b, nan=1e6, posinf=1e6, neginf=-1e6)
+
     dists = np.linalg.norm(pos_a - pos_b, axis=0)
     tca_idx = int(np.argmin(dists))
     tca_dist = float(dists[tca_idx])
@@ -809,9 +823,8 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             name="Earth"))
         earth_data = None
 
-    # Add coordinate grid lines (longitude / latitude)
+    # Add coordinate grid lines
     r_earth = 6371.0
-    # Longitude lines
     for lon_deg in range(-180, 181, 30):
         lon_rad = np.radians(lon_deg)
         lat_rad = np.linspace(-np.pi/2, np.pi/2, 50)
@@ -822,7 +835,6 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             x=xg.tolist(), y=yg.tolist(), z=zg.tolist(),
             mode="lines", line=dict(color="rgba(100,150,200,0.3)", width=1),
             showlegend=False, hoverinfo="skip"))
-    # Latitude lines
     for lat_deg in range(-90, 91, 30):
         lat_rad = np.radians(lat_deg)
         lon_rad = np.linspace(-np.pi, np.pi, 50)
@@ -844,61 +856,79 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         mode="lines", line=dict(color="rgba(255,107,0,0.12)", width=1.5),
         name=sat_b.name+" orbit", showlegend=False, visible=show_orbits))
 
-    # TCA point (static)
+    # TCA point (static) – only if coordinates are finite
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
-    fig.add_trace(go.Scatter3d(
-        x=[mid_tca[0]], y=[mid_tca[1]], z=[mid_tca[2]],
-        mode="markers+text",
-        marker=dict(color="#ff2b4d", size=10, symbol="diamond",
-                    line=dict(color="#ffffff", width=1)),
-        text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
-        textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
-        name="TCA Point", visible=show_tca,
-    ))
+    if np.all(np.isfinite(mid_tca)):
+        fig.add_trace(go.Scatter3d(
+            x=[float(mid_tca[0])], y=[float(mid_tca[1])], z=[float(mid_tca[2])],
+            mode="markers+text",
+            marker=dict(color="#ff2b4d", size=10, symbol="diamond",
+                        line=dict(color="#ffffff", width=1)),
+            text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
+            textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
+            name="TCA Point", visible=show_tca,
+        ))
 
     n_static = len(fig.data)
 
-    # Helper to rotate Earth (only used if earth_data exists)
+    # Helper to rotate Earth
     def rotate_earth(x, y, z, angle_rad):
         cos_a = np.cos(angle_rad)
         sin_a = np.sin(angle_rad)
         x_rot = x * cos_a - y * sin_a
         y_rot = x * sin_a + y * cos_a
-        return x_rot, y_rot, z   # z unchanged
+        return x_rot, y_rot, z
 
-    # ── Dynamic traces (updated each frame) ────────────────────────────────
+    # ── Dynamic traces ────────────────────────────────────────────────────
     def make_dynamic_traces(i):
         t0 = max(0, i - trail_len)
         ta = pos_a[:, t0:i+1]
         tb = pos_b[:, t0:i+1]
         dc = dist_color(dists[i])
 
-        traces = [
-            go.Scatter3d(x=ta[0].tolist(), y=ta[1].tolist(), z=ta[2].tolist(),
-                         mode="lines", line=dict(color="#00c8ff", width=2.5),
-                         name=sat_a.name, showlegend=False),
-            go.Scatter3d(x=tb[0].tolist(), y=tb[1].tolist(), z=tb[2].tolist(),
-                         mode="lines", line=dict(color="#ff6b00", width=2.5),
-                         name=sat_b.name, showlegend=False),
-            go.Scatter3d(x=[pos_a[0,i]], y=[pos_a[1,i]], z=[pos_a[2,i]],
-                         mode="markers",
-                         marker=dict(color="#00c8ff", size=9, line=dict(color="#fff",width=1)),
-                         name=sat_a.name+" pos", showlegend=False),
-            go.Scatter3d(x=[pos_b[0,i]], y=[pos_b[1,i]], z=[pos_b[2,i]],
-                         mode="markers",
-                         marker=dict(color="#ff6b00", size=9, line=dict(color="#fff",width=1)),
-                         name=sat_b.name+" pos", showlegend=False),
-            go.Scatter3d(x=[pos_a[0,i], pos_b[0,i]],
-                         y=[pos_a[1,i], pos_b[1,i]],
-                         z=[pos_a[2,i], pos_b[2,i]],
-                         mode="lines+text",
-                         line=dict(color=dc, width=2, dash="dot"),
-                         text=["", f"  Δ {dists[i]:.1f} km"],
-                         textfont=dict(color=dc, size=9, family="Space Mono"),
-                         name=f"Distance", showlegend=False),
-        ]
+        traces = []
 
-        # Add rotating Earth (if we have texture data)
+        # Only add trail if there is at least one point
+        if ta.shape[1] > 0 and np.all(np.isfinite(ta)):
+            traces.append(go.Scatter3d(
+                x=ta[0].tolist(), y=ta[1].tolist(), z=ta[2].tolist(),
+                mode="lines", line=dict(color="#00c8ff", width=2.5),
+                name=sat_a.name, showlegend=False))
+        if tb.shape[1] > 0 and np.all(np.isfinite(tb)):
+            traces.append(go.Scatter3d(
+                x=tb[0].tolist(), y=tb[1].tolist(), z=tb[2].tolist(),
+                mode="lines", line=dict(color="#ff6b00", width=2.5),
+                name=sat_b.name, showlegend=False))
+
+        # Current positions
+        pa = pos_a[:, i]
+        pb = pos_b[:, i]
+        if np.all(np.isfinite(pa)):
+            traces.append(go.Scatter3d(
+                x=[float(pa[0])], y=[float(pa[1])], z=[float(pa[2])],
+                mode="markers",
+                marker=dict(color="#00c8ff", size=9, line=dict(color="#fff", width=1)),
+                name=sat_a.name+" pos", showlegend=False))
+        if np.all(np.isfinite(pb)):
+            traces.append(go.Scatter3d(
+                x=[float(pb[0])], y=[float(pb[1])], z=[float(pb[2])],
+                mode="markers",
+                marker=dict(color="#ff6b00", size=9, line=dict(color="#fff", width=1)),
+                name=sat_b.name+" pos", showlegend=False))
+
+        # Distance line
+        if np.all(np.isfinite(pa)) and np.all(np.isfinite(pb)):
+            traces.append(go.Scatter3d(
+                x=[float(pa[0]), float(pb[0])],
+                y=[float(pa[1]), float(pb[1])],
+                z=[float(pa[2]), float(pb[2])],
+                mode="lines+text",
+                line=dict(color=dc, width=2, dash="dot"),
+                text=["", f"  Δ {dists[i]:.1f} km"],
+                textfont=dict(color=dc, size=9, family="Space Mono"),
+                name="Distance", showlegend=False))
+
+        # Add rotating Earth if texture available
         if earth_data is not None:
             x, y, z, sc, cs = earth_data
             time_hours = i * step_min / 60.0
@@ -912,6 +942,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
                 lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
                 name="Earth",
             ))
+
         return traces
 
     # Add initial dynamic traces
@@ -919,6 +950,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         fig.add_trace(tr)
 
     n_dynamic = len(fig.data) - n_static
+    if n_dynamic == 0:
+        # No dynamic traces – return static figure only
+        return fig, tca_idx, tca_dist, dists, anim_jd
+
     dyn_indices = list(range(n_static, n_static + n_dynamic))
 
     # ── Animation frames ───────────────────────────────────────────────────
@@ -944,7 +979,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
 
     fig.frames = frames
 
-    # ── Layout, buttons, slider ────────────────────────────────────────────
+    # ── Layout and controls ────────────────────────────────────────────────
     fig.update_layout(
         **DARK,
         height=640,
