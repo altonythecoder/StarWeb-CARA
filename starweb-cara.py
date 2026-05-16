@@ -463,14 +463,15 @@ DARK = dict(
 def fig_3d_orbits(sats):
     now    = ts.now()
     fig    = go.Figure()
-    earth  = load_earth_texture(270)
+    earth = load_earth_texture(200)
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(go.Surface(
             x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
-            showscale=False, opacity=1.0, hoverinfo="skip", name="Dunya",
-            lightposition=dict(x=200000, y=80000, z=120000),
-            lighting=dict(ambient=0.6, diffuse=0.92, specular=0.04, roughness=0.85, fresnel=0.05),
+            showscale=False, opacity=1.0, hoverinfo="skip",
+            lightposition=dict(x=100000, y=80000, z=60000),   # ← DÜZELTİLDİ
+            lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
+            name="Earth",
         ))
     else:
         r = 6371
@@ -478,6 +479,7 @@ def fig_3d_orbits(sats):
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
             colorscale="Blues", opacity=.4, showscale=False))
+    
     colors  = ["#00c8ff","#00ff9d","#ffaa00","#ff6b00","#c060ff","#ff2b4d",
                "#60d0ff","#80ffb0","#ffcc60","#ff9060"]
     offsets = np.linspace(0, 95, 80) / 1440.0
@@ -491,6 +493,7 @@ def fig_3d_orbits(sats):
         fig.add_trace(go.Scatter3d(x=[p0[0]], y=[p0[1]], z=[p0[2]], mode="markers",
             marker=dict(color=c, size=6, symbol="circle", line=dict(color="#ffffff", width=1)),
             name=f"{sat.name} (now)", showlegend=False))
+    
     fig.update_layout(
         **DARK, margin=dict(l=0, r=0, t=0, b=0),
         scene=dict(bgcolor="#000408",
@@ -505,7 +508,6 @@ def fig_3d_orbits(sats):
             x=0.01, y=0.99, itemsizing="constant"),
     )
     return fig
-
 def fig_ground_tracks(sats):
     now     = ts.now()
     offsets = np.linspace(0, 95, 200) / 1440.0
