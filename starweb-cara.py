@@ -708,14 +708,15 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
 # ================================================================================
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
-def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
+def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: bool = True, show_tca: bool = True):
     """
     3D Plotly figure showing two satellites with real-time animation.
     - Play / Stop / 2× / 5× speed buttons
     - Time slider
     - Jump to TCA button
     - Inter-satellite distance line (color by danger level)
-    - Orbit trails
+    - Orbit trails (controlled by show_orbits parameter)
+    - TCA marker (controlled by show_tca parameter)
     """
     now     = ts.now()
     step_min = 2                           # minute step
@@ -779,10 +780,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
     # Full orbit paths (faint, static) - index 0 and 1
     fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
         line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" orbit",
-        showlegend=False, visible=True))
+        showlegend=False, visible=show_orbits))
     fig.add_trace(go.Scatter3d(x=orb_b[0], y=orb_b[1], z=orb_b[2], mode="lines",
         line=dict(color="rgba(255,107,0,0.12)", width=1.5), name=sat_b.name+" orbit",
-        showlegend=False, visible=True))
+        showlegend=False, visible=show_orbits))
 
     # TCA point (static red marker) - index 2
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
@@ -794,7 +795,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
         text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
         textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
         name="TCA Point",
-        visible=True,
+        visible=show_tca,
     ))
 
     n_static = len(fig.data)  # static trace count — dynamic traces after this
@@ -905,7 +906,6 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
             xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
             aspectmode="cube",
             camera=dict(eye=dict(x=1.7, y=1.7, z=0.75), up=dict(x=0,y=0,z=1)),
-            dragmode="orbit",  # Enable camera control
         ),
         legend=dict(font=dict(size=8, family="Space Mono"),
                     bgcolor="rgba(0,4,8,.85)", bordercolor="#1a2740", borderwidth=1,
@@ -915,38 +915,23 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
                 type="buttons", showactive=False,
                 bgcolor="#0c1018", bordercolor="#1a2740",
                 font=dict(family="Space Mono", size=8, color="#b8cfe0"),
-                y=1.02, x=0.35, xanchor="center", pad=dict(r=4),
+                y=1.02, x=0.5, xanchor="center", pad=dict(r=4),
                 direction="left",
                 buttons=[
                     dict(label="▶ PLAY", method="animate",
                          args=[None, dict(frame=dict(duration=80, redraw=True),
-                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
+                                         fromcurrent=True, mode="immediate")]),
                     dict(label="⏸ STOP", method="animate",
                          args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
                     dict(label="⏩ 2×", method="animate",
                          args=[None, dict(frame=dict(duration=40, redraw=True),
-                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
+                                         fromcurrent=True, mode="immediate")]),
                     dict(label="⏩⏩ 5×", method="animate",
                          args=[None, dict(frame=dict(duration=16, redraw=True),
-                                         fromcurrent=True, mode="immediate", transition=dict(duration=0))]),
-                ],
-            ),
-            dict(
-                type="buttons", showactive=False,
-                bgcolor="#0c1018", bordercolor="#1a2740",
-                font=dict(family="Space Mono", size=8, color="#b8cfe0"),
-                y=1.02, x=0.65, xanchor="center", pad=dict(r=4),
-                direction="left",
-                buttons=[
+                                         fromcurrent=True, mode="immediate")]),
                     dict(label="⏮ JUMP TO TCA", method="animate",
                          args=[[str(tca_idx)],
                                dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
-                    dict(label="🌍 ORBITS", method="restyle",
-                         args=[{"visible": [True, True, True, True, True, True, True, True]}],
-                         args2=[{"visible": [True, True, True, True, True, True, False, False]}]),
-                    dict(label="📍 TCA", method="restyle",
-                         args=[{"visible": [True, True, True, True, True, True, True, True]}],
-                         args2=[{"visible": [True, True, False, True, True, True, True, True]}]),
                 ],
             ),
         ],
@@ -1415,6 +1400,14 @@ with tab4:
     with sc3:
         sim_hrs = st.slider("Window (hours)", 1, 12, 6, key="sim_hrs")
 
+    # Display options
+    st.markdown("**Display Options**")
+    col_opt1, col_opt2 = st.columns(2)
+    with col_opt1:
+        show_orbits = st.checkbox("Show Orbit Trails", value=True, key="show_orbits")
+    with col_opt2:
+        show_tca = st.checkbox("Show TCA Marker", value=True, key="show_tca")
+
     if sel_a == sel_b:
         st.warning("Select two different satellites.")
     else:
@@ -1432,7 +1425,7 @@ with tab4:
             sb = st.session_state["sim_sat_b"]
             with st.spinner("Calculating orbits and creating animation..."):
                 anim_fig, tca_i, tca_d, dists_arr, jd_arr = \
-                    fig_animated_conjunction(sa, sb, sim_hrs)
+                    fig_animated_conjunction(sa, sb, sim_hrs, show_orbits, show_tca)
 
             # TCA info
             tca_utc = ts.tt_jd(jd_arr[tca_i]).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
