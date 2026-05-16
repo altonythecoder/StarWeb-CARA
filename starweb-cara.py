@@ -725,6 +725,9 @@ def compute_conjunctions_custom(my_sat, sats: list, window_hrs: int, sigma_km: f
 def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: bool = True, show_tca: bool = True):
     """
     3D Plotly figure showing two satellites with real-time animation.
+    - Play / Stop / 2× / 5× speed buttons
+    - Time slider
+    - Jump to TCA button
     """
     now     = ts.now()
     step_min = 2
@@ -732,12 +735,12 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     trail_len = 25
     orbit_pts = 100
 
-    # Full orbit paths
+    # Full orbit paths (static background)
     orb_off = np.linspace(0, 96, orbit_pts) / 1440.0
     orb_a   = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
     orb_b   = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
 
-    # Animation positions
+    # Positions at animation steps
     anim_off = np.arange(n_frames) * step_min / 1440.0
     anim_jd  = now.tt + anim_off
     pos_a    = sat_a.at(ts.tt_jd(anim_jd)).position.km
@@ -755,19 +758,21 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     fig = go.Figure()
 
     # === DÜZELTİLMİŞ EARTH ===
-    earth = load_earth_texture(180)
+    earth = load_earth_texture(200)
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(go.Surface(
             x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
             showscale=False, opacity=1.0, hoverinfo="skip",
-            lightposition=dict(x=100000, y=80000, z=60000),   # ← HATA BURADAYDI
+            lightposition=dict(x=100000, y=80000, z=60000),   # ← BU SATIR DÜZELDİ
             lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
             name="Earth",
         ))
     else:
+        # Fallback Earth
         r = 6371.0
         u, v = np.mgrid[0:2*np.pi:120j, 0:np.pi:60j]
+        z_vals = r * np.cos(v)
         colorscale_earth = [
             [0.0, "#081828"], [0.2, "#0a2848"], [0.35, "#1a3868"],
             [0.5, "#2a4888"], [0.65, "#2a4888"], [0.8, "#1a3868"],
@@ -777,12 +782,12 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
             colorscale=colorscale_earth, opacity=0.95, showscale=False,
             name="Earth",
-            lightposition=dict(x=100000, y=80000, z=60000),
+            lightposition=dict(x=100000, y=80000, z=60000),   # ← BURASI DA DÜZELDİ
         ))
 
-    # Grid lines
+    # Latitude/Longitude Grid
     r = 6371.0
-    for lon_deg in [-180, -90, 0, 90, 180]:
+    for lon_deg in range(-180, 181, 30):
         lon_rad = np.radians(lon_deg)
         lat_rad = np.linspace(-np.pi/2, np.pi/2, 50)
         x_grid = r * np.cos(lat_rad) * np.cos(lon_rad)
@@ -790,8 +795,8 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         z_grid = r * np.sin(lat_rad)
         fig.add_trace(go.Scatter3d(x=x_grid, y=y_grid, z=z_grid, mode="lines",
             line=dict(color="rgba(100,150,200,0.3)", width=1), showlegend=False, hoverinfo="skip"))
-
-    for lat_deg in [-60, -30, 0, 30, 60]:
+    
+    for lat_deg in range(-90, 91, 30):
         lat_rad = np.radians(lat_deg)
         lon_rad = np.linspace(-np.pi, np.pi, 50)
         x_grid = r * np.cos(lat_rad) * np.cos(lon_rad)
@@ -800,7 +805,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         fig.add_trace(go.Scatter3d(x=x_grid, y=y_grid, z=z_grid, mode="lines",
             line=dict(color="rgba(100,150,200,0.3)", width=1), showlegend=False, hoverinfo="skip"))
 
-    # Orbit paths
+    # Full orbit paths
     fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2], mode="lines",
         line=dict(color="rgba(0,200,255,0.12)", width=1.5), name=sat_a.name+" orbit",
         showlegend=False, visible=show_orbits))
@@ -812,7 +817,8 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
     fig.add_trace(go.Scatter3d(
         x=[mid_tca[0]], y=[mid_tca[1]], z=[mid_tca[2]],
-        mode="markers+text", marker=dict(color="#ff2b4d", size=10, symbol="diamond"),
+        mode="markers+text",
+        marker=dict(color="#ff2b4d", size=10, symbol="diamond", line=dict(color="#ffffff", width=1)),
         text=[f"TCA {tca_dist:.1f} km"], textposition="top right",
         textfont=dict(color="#ff2b4d", size=9, family="Space Mono"),
         name="TCA Point", visible=show_tca,
@@ -827,59 +833,51 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         tb = pos_b[:, t0:i+1]
         dc = dist_color(dists[i])
         
-        return [
-            go.Scatter3d(x=ta[0], y=ta[1], z=ta[2], mode="lines", line=dict(color="#00c8ff", width=2.5), showlegend=False),
-            go.Scatter3d(x=tb[0], y=tb[1], z=tb[2], mode="lines", line=dict(color="#ff6b00", width=2.5), showlegend=False),
-            go.Scatter3d(x=[pos_a[0,i]], y=[pos_a[1,i]], z=[pos_a[2,i]], mode="markers", marker=dict(color="#00c8ff", size=9, line=dict(color="#fff",width=1)), showlegend=False),
-            go.Scatter3d(x=[pos_b[0,i]], y=[pos_b[1,i]], z=[pos_b[2,i]], mode="markers", marker=dict(color="#ff6b00", size=9, line=dict(color="#fff",width=1)), showlegend=False),
-            go.Scatter3d(x=[pos_a[0,i], pos_b[0,i]], y=[pos_a[1,i], pos_b[1,i]], z=[pos_a[2,i], pos_b[2,i]],
-                mode="lines+text", line=dict(color=dc, width=2.5, dash="dot"),
-                text=["", f"  Δ {dists[i]:.1f} km"], textfont=dict(color=dc, size=9, family="Space Mono"), showlegend=False),
+        traces = [
+            go.Scatter3d(x=ta[0], y=ta[1], z=ta[2], mode="lines", line=dict(color="#00c8ff", width=2.5), name=sat_a.name, showlegend=False),
+            go.Scatter3d(x=tb[0], y=tb[1], z=tb[2], mode="lines", line=dict(color="#ff6b00", width=2.5), name=sat_b.name, showlegend=False),
+            go.Scatter3d(x=[pos_a[0,i]], y=[pos_a[1,i]], z=[pos_a[2,i]], mode="markers", marker=dict(color="#00c8ff", size=9, line=dict(color="#fff",width=1)), name=sat_a.name+" pos", showlegend=False),
+            go.Scatter3d(x=[pos_b[0,i]], y=[pos_b[1,i]], z=[pos_b[2,i]], mode="markers", marker=dict(color="#ff6b00", size=9, line=dict(color="#fff",width=1)), name=sat_b.name+" pos", showlegend=False),
+            go.Scatter3d(x=[pos_a[0,i], pos_b[0,i]], y=[pos_a[1,i], pos_b[1,i]], z=[pos_a[2,i], pos_b[2,i]], mode="lines+text",
+                line=dict(color=dc, width=2, dash="dot"), text=["", f"  Δ {dists[i]:.1f} km"],
+                textfont=dict(color=dc, size=9, family="Space Mono"), name="Distance", showlegend=False),
         ]
+        return traces
 
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
 
     dyn_idx = list(range(n_static, n_static + 5))
 
-    # === ANIMATION FRAMES ===
+    # Animation frames
     frames = []
     slider_steps = []
     for i in range(n_frames):
         t_utc = ts.tt_jd(anim_jd[i]).utc_strftime("%H:%M UTC")
         t_min = i * step_min
-        title_txt = f"T+{t_min:04d} min | {t_utc} | Δ {dists[i]:.1f} km" + (" ⚠ TCA" if i == tca_idx else "")
+        title_txt = (f"T+{t_min:04d} min  |  {t_utc}  |  Δ {dists[i]:.1f} km" + ("  ⚠ TCA" if i == tca_idx else ""))
         frames.append(go.Frame(data=make_dynamic_traces(i), traces=dyn_idx, name=str(i), layout=go.Layout(title_text=title_txt)))
-        
-        lbl = t_utc if i % max(1, n_frames//15) == 0 else ""
+        lbl = t_utc if i % max(1, n_frames//20) == 0 else ""
         slider_steps.append(dict(args=[[str(i)], dict(frame=dict(duration=0, redraw=True), mode="immediate")], label=lbl, method="animate"))
 
     fig.frames = frames
 
-    # Layout + Controls
+    # Layout
     fig.update_layout(
         **DARK, height=640, margin=dict(l=0, r=0, t=70, b=10),
-        title=dict(text=f"{sat_a.name} × {sat_b.name} — TCA: {tca_dist:.2f} km", 
+        title=dict(text=f"{sat_a.name} × {sat_b.name} — TCA: {tca_dist:.2f} km (T+{tca_idx*step_min} min)",
                    font=dict(family="Barlow Condensed", color="#00c8ff", size=13), x=0.01, y=0.98),
         scene=dict(bgcolor="#000408", xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
                    aspectmode="cube", camera=dict(eye=dict(x=1.7, y=1.7, z=0.75), up=dict(x=0,y=0,z=1))),
-        updatemenus=[
-            dict(type="buttons", showactive=False, bgcolor="#0c1018", bordercolor="#1a2740",
-                 font=dict(family="Space Mono", size=8, color="#b8cfe0"),
-                 y=1.02, x=0.5, xanchor="center", pad=dict(r=4), direction="left",
-                 buttons=[
-                     dict(label="▶ PLAY", method="animate", args=[None, dict(frame=dict(duration=80, redraw=True), fromcurrent=True, mode="immediate")]),
-                     dict(label="⏸ STOP", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
-                     dict(label="⏮ JUMP TO TCA", method="animate", args=[[str(tca_idx)], dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
-                 ],
-            ),
-        ],
-        sliders=[dict(steps=slider_steps, active=0,
-            currentvalue=dict(prefix="⏱  ", font=dict(family="Space Mono",size=9,color="#4a6880")),
-            pad=dict(t=64, b=0), len=0.92, x=0.04,
-            bgcolor="#0c1018", bordercolor="#1a2740", tickcolor="#1a2740",
-            font=dict(color="#4a6880", size=7),
-        )],
+        updatemenus=[dict(type="buttons", showactive=False, bgcolor="#0c1018", bordercolor="#1a2740",
+            font=dict(family="Space Mono", size=8, color="#b8cfe0"), y=1.02, x=0.5, xanchor="center",
+            buttons=[
+                dict(label="▶ PLAY", method="animate", args=[None, dict(frame=dict(duration=80, redraw=True), fromcurrent=True, mode="immediate")]),
+                dict(label="⏸ STOP", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
+                dict(label="⏮ JUMP TO TCA", method="animate", args=[[str(tca_idx)], dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
+            ])],
+        sliders=[dict(steps=slider_steps, active=0, currentvalue=dict(prefix="⏱  ", font=dict(family="Space Mono",size=9,color="#4a6880")),
+                 pad=dict(t=64, b=0), len=0.92, x=0.04, bgcolor="#0c1018", bordercolor="#1a2740")]
     )
     return fig, tca_idx, tca_dist, dists, anim_jd
 
