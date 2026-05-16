@@ -469,7 +469,7 @@ def fig_3d_orbits(sats):
         fig.add_trace(go.Surface(
             x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
             showscale=False, opacity=1.0, hoverinfo="skip", name="Dunya",
-            lightposition=dict(x=200000, y=80000, z=120000),
+            lightposition=dict(x=0, y=0, z=10000),
             lighting=dict(ambient=0.6, diffuse=0.92, specular=0.04, roughness=0.85, fresnel=0.05),
         ))
     else:
