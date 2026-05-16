@@ -782,13 +782,31 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
 
     n_static = len(fig.data)  # static trace count — dynamic traces after this
 
+    # Earth rotation function (Earth rotates 360° in 24 hours)
+    def rotate_earth(x, y, z, angle_rad):
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+        # Rotate around Z-axis (Earth's rotation axis)
+        x_rot = x * cos_a - y * sin_a
+        y_rot = x * sin_a + y * cos_a
+        z_rot = z
+        return x_rot, y_rot, z_rot
+
+    # Store original Earth coordinates
+    earth_x_orig, earth_y_orig, earth_z_orig = x, y, z if earth else (None, None, None)
+
     # Initial dynamic state (frame 0)
     def make_dynamic_traces(i):
         t0 = max(0, i - trail_len)
         ta = pos_a[:, t0:i+1]
         tb = pos_b[:, t0:i+1]
         dc = dist_color(dists[i])
-        return [
+        
+        # Rotate Earth based on time (360° in 24 hours = 15°/hour)
+        time_hours = i * step_min / 60.0
+        earth_angle = np.radians(time_hours * 15.0)  # 15 degrees per hour
+        
+        traces = [
             go.Scatter3d(x=ta[0], y=ta[1], z=ta[2], mode="lines",
                 line=dict(color="#00c8ff", width=2.5),
                 name=sat_a.name, showlegend=True),
@@ -814,11 +832,24 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
                 name=f"Distance", showlegend=False,
             ),
         ]
+        
+        # Add rotated Earth surface
+        if earth_x_orig is not None:
+            ex_rot, ey_rot, ez_rot = rotate_earth(earth_x_orig, earth_y_orig, earth_z_orig, earth_angle)
+            traces.insert(0, go.Surface(
+                x=ex_rot, y=ey_rot, z=ez_rot, surfacecolor=sc, colorscale=cs,
+                showscale=False, opacity=1.0, hoverinfo="skip",
+                lightposition=dict(x=200000, y=80000, z=120000),
+                lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
+                name="Earth",
+            ))
+        
+        return traces
 
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
 
-    dyn_idx = list(range(n_static, n_static + 5))
+    dyn_idx = list(range(n_static, n_static + 6))  # 6 dynamic traces (Earth + 5 satellite traces)
 
     # ── Animation frames ────────────────────────────────────────────────────
     frames = []
@@ -847,10 +878,10 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
     fig.update_layout(
         **DARK,
         height=640,
-        margin=dict(l=0, r=0, t=52, b=10),
+        margin=dict(l=0, r=0, t=70, b=10),
         title=dict(
-            text=f"{sat_a.name}  ×  {sat_b.name} — TCA: {tca_dist:.2f} km  (T+{tca_idx*step_min} min)",
-            font=dict(family="Barlow Condensed", color="#00c8ff", size=14), x=0.01,
+            text=f"{sat_a.name} × {sat_b.name} — TCA: {tca_dist:.2f} km (T+{tca_idx*step_min} min)",
+            font=dict(family="Barlow Condensed", color="#00c8ff", size=13), x=0.01, y=0.98,
         ),
         scene=dict(
             bgcolor="#000408",
@@ -860,12 +891,13 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
         ),
         legend=dict(font=dict(size=8, family="Space Mono"),
                     bgcolor="rgba(0,4,8,.85)", bordercolor="#1a2740", borderwidth=1,
-                    x=0.01, y=0.99, itemsizing="constant"),
+                    x=0.01, y=0.92, itemsizing="constant"),
         updatemenus=[dict(
             type="buttons", showactive=False,
             bgcolor="#0c1018", bordercolor="#1a2740",
-            font=dict(family="Space Mono", size=9, color="#b8cfe0"),
-            y=1.06, x=0.0, xanchor="left", pad=dict(r=4),
+            font=dict(family="Space Mono", size=8, color="#b8cfe0"),
+            y=1.02, x=0.5, xanchor="center", pad=dict(r=4),
+            direction="left",
             buttons=[
                 dict(label="▶ PLAY", method="animate",
                      args=[None, dict(frame=dict(duration=80, redraw=True),
@@ -886,7 +918,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6):
         sliders=[dict(
             steps=slider_steps, active=0,
             currentvalue=dict(prefix="⏱  ", font=dict(family="Space Mono",size=9,color="#4a6880")),
-            pad=dict(t=46, b=0), len=0.92, x=0.04,
+            pad=dict(t=64, b=0), len=0.92, x=0.04,
             bgcolor="#0c1018", bordercolor="#1a2740", tickcolor="#1a2740",
             font=dict(color="#4a6880", size=7),
         )],
@@ -905,11 +937,11 @@ st.markdown("""
 <div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
   <div style="font-family:'Space Mono',monospace; font-size:.68rem;
               color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations (starlink/iss/oneweb)
+    Conjunction Assessment and Collision Risk Analysis (starlink/iss/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
-    For Low Earth Orbit<br>
-    <span style="color:#00c8ff;">Conjunction Assessment &amp; Collision Risk Analysis for Starlink and OneWeb Megaconstellations</span>
+    Low Earth Orbit<br>
+    <span style="color:#00c8ff;">Conjunction Assessment &amp; Collision Risk Analysis </span>
   </h1>
   <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
               color:#4a6880; margin-top:6px; letter-spacing:.05em;">
