@@ -186,10 +186,6 @@ To analyze your own satellite:
 - Vallado, D.A. (2013). Fundamentals of Astrodynamics and Applications. 4th ed. Microcosm Press.
 - Hall, D.T. et al. (2023). A Multistep Probability of Collision Computational Algorithm. NASA NTRS.
 
-## 🎓 Academic Context
-
-This project was developed as a graduation project for Space Sciences and Technologies. It implements industry-standard algorithms for satellite conjunction assessment and collision risk analysis, following NASA STD-8719.14 guidelines and CARA (Conjunction Assessment Risk Analysis) methodology.
-
 ## 🔧 Technical Details
 
 - **Orbit Propagation**: SGP4/SDP4 via Skyfield library
