@@ -908,8 +908,8 @@ st.markdown("""
     StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations (starlink/iss/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
-    Low Earth Orbit<br>
-    <span style="color:#00c8ff;">Conjunction Analysis &amp; Collision Risk Simulation</span>
+    For Low Earth Orbit<br>
+    <span style="color:#00c8ff;">Conjunction Assessment &amp; Collision Risk Analysis for Starlink and OneWeb Megaconstellations</span>
   </h1>
   <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
               color:#4a6880; margin-top:6px; letter-spacing:.05em;">
