@@ -1654,15 +1654,21 @@ with tab4:
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
+    # Kendi uydumuzu (varsa) görselleştirme listesine ekleyelim
+    display_sats = sats.copy()
+    if "my_sat" in st.session_state:
+        # En başa ekliyoruz ki grafikte her zaman ilk rengi (açık mavi) alsın ve dikkat çeksin
+        display_sats.insert(0, st.session_state["my_sat"])
+
     c1_3d, c2_3d = st.columns([3, 2])
     with c1_3d:
         st.markdown("**3D Orbit View**")
         with st.spinner("Loading Earth texture..."):
-            st.plotly_chart(fig_3d_orbits(sats), use_container_width=True, height=560)
+            st.plotly_chart(fig_3d_orbits(display_sats), use_container_width=True, height=560, key="3d_orbit_tab5")
     with c2_3d:
         st.markdown("**Ground Track Map**")
         with st.spinner("Calculating..."):
-            st.plotly_chart(fig_ground_tracks(sats), use_container_width=True)
+            st.plotly_chart(fig_ground_tracks(display_sats), use_container_width=True, key="ground_track_tab5")
         st.markdown("""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
              color:#2a4060; line-height:2; margin-top:8px;">
           Approximately 95-minute track shown for each satellite.<br>
@@ -1673,7 +1679,13 @@ with tab5:
 # ── TAB 6: ORBITAL ELEMENTS ────────────────────────────────────────────────
 with tab6:
     st.markdown("## Orbital Elements and Space Distribution")
-    elems_list = [(sat.name, get_orbital_elements(sat)) for sat in sats]
+    
+    # Kendi uydumuzu radar ve tablo listesine de dahil edelim
+    display_sats = sats.copy()
+    if "my_sat" in st.session_state:
+        display_sats.insert(0, st.session_state["my_sat"])
+
+    elems_list = [(sat.name, get_orbital_elements(sat)) for sat in display_sats]
 
     col_a, col_b = st.columns([2, 3])
     with col_a:
@@ -1693,10 +1705,10 @@ with tab6:
             st.dataframe(df_elems, use_container_width=True, hide_index=True)
     with col_b:
         st.markdown("**Altitude / Inclination Distribution** (dot size = eccentricity)")
-        st.plotly_chart(fig_orbital_elements_radar(elems_list), use_container_width=True)
+        st.plotly_chart(fig_orbital_elements_radar(elems_list), use_container_width=True, key="radar_tab6")
 
     with st.expander("Selected Satellite Detail"):
-        sel_sat = st.selectbox("Select satellite", [s.name for s in sats], key="elem_sel")
+        sel_sat = st.selectbox("Select satellite", [s.name for s in display_sats], key="elem_sel")
         sel_elems = next((e for n, e in elems_list if n == sel_sat), {})
         if sel_elems:
             df_single = pd.DataFrame(sel_elems.items(), columns=["Element", "Value"])
