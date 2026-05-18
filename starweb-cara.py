@@ -673,7 +673,8 @@ def fig_orbital_elements_radar(elems_list):
         if not elems:
             continue
         try:
-            alt  = float(str(elems.get("Mean Altitude a (km)", 0)))
+            # HATA BURADAYDI: "Mean Altitude a (km)" yerine "Mean Altitude (km)" yapıldı.
+            alt  = float(str(elems.get("Mean Altitude (km)", 0)))
             incl = float(str(elems.get("Inclination i (°)", 0)))
             ecc  = float(str(elems.get("Eccentricity e", "0")))
             fig.add_trace(go.Scatter(
@@ -1044,9 +1045,11 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     for i in range(n_frames):
         t_utc = ts.tt_jd(anim_jd[i]).utc_strftime("%H:%M UTC")
         t_min = i * step_min
-        title_txt = (f"T+{t_min:04d} min  |  {t_utc}  |  "
-                     f"Δ {dists[i]:.1f} km"
-                     + ("  ⚠ TCA" if i == tca_idx else ""))
+        
+        # Daha şık, HUD tarzı dinamik başlık tasarımı (Sıfır dolguları kaldırıldı)
+        warn_tag = "<span style='color:#ff2b4d;'> ⚠ TCA</span>" if i == tca_idx else ""
+        title_txt = f"{sat_a.name} × {sat_b.name} <br><sup style='color:#b8cfe0;'>⏱ T+{t_min} min &nbsp;|&nbsp; {t_utc} &nbsp;|&nbsp; Δ {dists[i]:.1f} km{warn_tag}</sup>"
+        
         frames.append(go.Frame(
             data=make_dynamic_traces(i),
             traces=dyn_indices,
@@ -1061,13 +1064,17 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
 
     fig.frames = frames
 
+    # Animasyon başlamadan önce ekranda duracak ilk açılış başlığı
+    base_t_utc = ts.tt_jd(anim_jd[0]).utc_strftime('%H:%M UTC')
+    base_title = f"{sat_a.name} × {sat_b.name} <br><sup style='color:#b8cfe0;'>⏱ T+0 min &nbsp;|&nbsp; {base_t_utc} &nbsp;|&nbsp; Δ {dists[0]:.1f} km</sup>"
+
     fig.update_layout(
         **DARK,
         height=640,
         margin=dict(l=0, r=0, t=70, b=10),
         title=dict(
-            text=f"{sat_a.name} × {sat_b.name} — TCA: {tca_dist:.2f} km (T+{tca_idx*step_min} min)",
-            font=dict(family="Barlow Condensed", color="#00c8ff", size=13), x=0.01, y=0.98,
+            text=base_title,
+            font=dict(family="Barlow Condensed", color="#00c8ff", size=15), x=0.01, y=0.98,
         ),
         scene=dict(
             bgcolor="#000408",
@@ -1086,25 +1093,20 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
                 y=1.02, x=0.5, xanchor="center", pad=dict(r=4),
                 direction="left",
                 buttons=[
-                    # 1x — every frame, 60ms each
                     dict(label="▶ 1x", method="animate",
                          args=[[str(k) for k in range(n_frames)],
                                dict(frame=dict(duration=60, redraw=True),
                                     fromcurrent=True, mode="immediate")]),
-                    # 2x — every 2nd frame, same duration → twice the orbit advance per step
                     dict(label="⏩ 2x", method="animate",
                          args=[[str(k) for k in range(0, n_frames, 2)],
                                dict(frame=dict(duration=60, redraw=True),
                                     fromcurrent=True, mode="immediate")]),
-                    # 5x — every 5th frame, same duration → five times the orbit advance per step
                     dict(label="⏭ 5x", method="animate",
                          args=[[str(k) for k in range(0, n_frames, 5)],
                                dict(frame=dict(duration=60, redraw=True),
                                     fromcurrent=True, mode="immediate")]),
-                    # STOP
                     dict(label="⏸ STOP", method="animate",
                          args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
-                    # JUMP TO TCA
                     dict(label="⏮ TCA", method="animate",
                          args=[[str(tca_idx)],
                                dict(frame=dict(duration=0, redraw=True), mode="immediate")]),
@@ -1120,7 +1122,6 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         )],
     )
     return fig, tca_idx, tca_dist, dists, anim_jd
-
 
 # ================================================================================
 #  INTERFACE
