@@ -879,7 +879,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         lon_rad = np.linspace(-np.pi, np.pi, 50)
         xg = r_earth * np.cos(lat_rad) * np.cos(lon_rad)
         yg = r_earth * np.cos(lat_rad) * np.sin(lon_rad)
-        zg = r_earth * np.sin(lat_rad)
+        zg = np.full_like(lon_rad, r_earth * np.sin(lat_rad))  # FIX: scalar → array
         fig.add_trace(go.Scatter3d(
             x=xg.tolist(), y=yg.tolist(), z=zg.tolist(),
             mode="lines", line=dict(color="rgba(100,150,200,0.3)", width=1),
