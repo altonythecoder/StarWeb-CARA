@@ -904,8 +904,46 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             mode="lines", line=dict(color="rgba(255,107,0,0.12)", width=1.5),
             name=sat_b.name+" orbit", showlegend=False))
 
-    # TCA point (SAFE CHECK ADDED)
+    # TCA point
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
+
+    # ── TCA-FACING CAMERA ALGORITHM ──────────────────────────────────────────
+    # Strategy: position camera in the direction of TCA from Earth center so
+    # TCA always faces the viewer.  Plotly 3D eye coords are scene-normalised:
+    # with aspectmode='cube' and data ~±8000 km, eye magnitude ≈ 2.0–2.5 maps
+    # to a comfortable full-globe view.
+    _CAM_DIST = 2.3          # eye distance in normalised scene units
+    _CAM_DIST_Z_BOOST = 0.25 # slight upward tilt so labels aren't clipped
+
+    if not np.any(np.isnan(mid_tca)) and np.linalg.norm(mid_tca) > 100:
+        _unit = mid_tca / np.linalg.norm(mid_tca)   # unit vector toward TCA
+        _eye  = _unit * _CAM_DIST
+
+        # Lift camera slightly so text labels on top aren't cut off
+        _eye[2] += _CAM_DIST_Z_BOOST
+        # Re-normalise to keep distance consistent after z-lift
+        _eye = _eye / np.linalg.norm(_eye) * _CAM_DIST
+
+        # Up vector: default world-Z; fall back to world-Y near poles
+        # (avoids gimbal lock when eye ≈ (0,0,±1))
+        _up = np.array([0.0, 0.0, 1.0])
+        if abs(np.dot(_unit, np.array([0.0, 0.0, 1.0]))) > 0.92:
+            _up = np.array([0.0, 1.0, 0.0])
+
+        tca_camera = dict(
+            eye=dict(x=float(_eye[0]), y=float(_eye[1]), z=float(_eye[2])),
+            center=dict(x=0, y=0, z=0),   # always look at Earth centre
+            up=dict(x=float(_up[0]), y=float(_up[1]), z=float(_up[2])),
+        )
+    else:
+        # Fallback: sensible default if TCA position is unavailable
+        tca_camera = dict(
+            eye=dict(x=1.7, y=1.7, z=0.75),
+            center=dict(x=0, y=0, z=0),
+            up=dict(x=0, y=0, z=1),
+        )
+    # ─────────────────────────────────────────────────────────────────────────
+
     if show_tca and not np.any(np.isnan(mid_tca)):
         fig.add_trace(go.Scatter3d(
             x=[float(mid_tca[0])], y=[float(mid_tca[1])], z=[float(mid_tca[2])],
@@ -1035,7 +1073,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
             bgcolor="#000408",
             xaxis=dict(visible=False), yaxis=dict(visible=False), zaxis=dict(visible=False),
             aspectmode="cube",
-            camera=dict(eye=dict(x=1.7, y=1.7, z=0.75), up=dict(x=0,y=0,z=1)),
+            camera=tca_camera,  # dynamically oriented toward TCA
         ),
         legend=dict(font=dict(size=8, family="Space Mono"),
                     bgcolor="rgba(0,4,8,.85)", bordercolor="#1a2740", borderwidth=1,
