@@ -77,67 +77,81 @@ header[data-testid="stHeader"]{display:none !important;}
 #  EARTH VIEW
 # ================================================================================
 @st.cache_data(show_spinner=False)
-def load_earth_texture(resolution: int = 270):
+def load_earth_texture(resolution: int = 360, style: str = "night"):
+    """
+    Yüksek kaliteli NASA Dünya dokularını yükler ve Plotly Surface için optimize eder.
+    style: "night" (Gece Işıkları), "realistic" (Gerçekçi Blue Marble), "futuristic" (Mavi/Siyan Tonlu)
+    """
     try:
-        # Try multiple reliable Earth texture sources
-        urls = [
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg",
-            "https://upload.wikimedia.org/wikipedia/commons/2/23/Blue_Marble_2002.png",
-            "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg",
-        ]
+        if style == "night":
+            # NASA Black Marble (Gece Işıkları) - Karanlık tema için EN İYİSİ
+            urls = [
+                "https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.3600x1800.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/b/ba/The_earth_at_night.jpg"
+            ]
+        elif style == "realistic":
+            # NASA Blue Marble Next Generation (Yüksek Çözünürlüklü Gerçekçi)
+            urls = [
+                "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg",
+                "https://upload.wikimedia.org/wikipedia/commons/a/ad/Blue_Marble_2002.png"
+            ]
+        else:
+            # Senin eski fütüristik temanın optimize edilmiş hali
+            urls = [
+                "https://upload.wikimedia.org/wikipedia/commons/c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg"
+            ]
         
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         
         for url in urls:
             try:
-                resp = requests.get(url, headers=headers, timeout=45)
+                resp = requests.get(url, headers=headers, timeout=30)
                 resp.raise_for_status()
                 
                 img  = Image.open(BytesIO(resp.content)).convert("RGB")
                 W, H = resolution * 2, resolution
+                
+                # LANCZOS filtresi, yeniden boyutlandırmada piksellenmeyi en aza indirir
                 img  = img.resize((W, H), Image.LANCZOS)
                 
-                # Apply dark futuristic style transformations
-                # Convert to numpy array for processing
-                img_array = np.array(img)
+                img_array = np.array(img, dtype=np.float32)
                 
-                # Darken overall image for futuristic night look
-                img_array = img_array * 0.4
+                if style == "futuristic":
+                    # Fütüristik mavi/siyan renk işlemleri
+                    img_array = img_array * 0.4
+                    img_array[:, :, 2] = np.clip(img_array[:, :, 2] * 1.4, 0, 255)
+                    img_array[:, :, 1] = np.clip(img_array[:, :, 1] * 1.1, 0, 255)
+                    mean_val = np.mean(img_array)
+                    img_array = np.clip((img_array - mean_val) * 1.3 + mean_val, 0, 255)
+                    img_array = np.clip(img_array + 15, 0, 255)
+                elif style == "night":
+                    # Şehir ışıklarını hafifçe parlat, okyanusları tam siyah yap
+                    img_array = np.clip(img_array * 1.3, 0, 255)
                 
-                # Enhance blue tones for deep oceans (boost blue channel)
-                img_array[:, :, 2] = np.clip(img_array[:, :, 2] * 1.4, 0, 255)
-                
-                # Add subtle cyan/teal tint for futuristic atmosphere
-                img_array[:, :, 1] = np.clip(img_array[:, :, 1] * 1.1, 0, 255)
-                
-                # Increase contrast for cinematic look
-                mean_val = np.mean(img_array)
-                img_array = np.clip((img_array - mean_val) * 1.3 + mean_val, 0, 255)
-                
-                # Add subtle atmospheric glow effect (brighten edges slightly)
-                img_array = np.clip(img_array + 15, 0, 255)
-                
-                # Convert back to uint8
                 img_array = img_array.astype(np.uint8)
                 img = Image.fromarray(img_array)
                 
-                imgq = img.quantize(colors=256)
+                # MEDIANCUT algoritması, 256 renk limitinde oluşan çamurlaşmayı engeller
+                imgq = img.quantize(colors=256, method=Image.MEDIANCUT)
                 pal  = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
+                
                 idx  = np.flipud(np.array(imgq, dtype=float))
                 surf_color = idx / 255.0
                 colorscale = [[i / 255.0, f"rgb({pal[i,0]},{pal[i,1]},{pal[i,2]})"] for i in range(256)]
+                
                 lat = np.linspace(np.pi / 2, -np.pi / 2, H)
                 lon = np.linspace(-np.pi, np.pi, W)
                 lon_g, lat_g = np.meshgrid(lon, lat)
+                
                 R = 6371.0
                 x = R * np.cos(lat_g) * np.cos(lon_g)
                 y = R * np.cos(lat_g) * np.sin(lon_g)
                 z = R * np.sin(lat_g)
+                
                 return x, y, z, surf_color, colorscale
             except Exception:
                 continue
-        
-        # If all URLs fail, return None to use procedural fallback
+                
         return None
     except Exception as e:
         st.sidebar.warning(f"Earth texture load failed: {str(e)[:50]}")
@@ -490,7 +504,7 @@ def fig_3d_orbits(sats):
     fig    = go.Figure()
     
     # Dünya kaplamasını yükle
-    earth  = load_earth_texture(270)
+    earth = load_earth_texture(resolution=360, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(go.Surface(
@@ -822,7 +836,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     fig = go.Figure()
 
     # Earth texture (with fallback)
-    earth = load_earth_texture(200)
+    earth = load_earth_texture(resolution=240, style="night")
     earth_data = None
     if earth:
         x, y, z, sc, cs = earth
