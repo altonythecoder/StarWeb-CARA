@@ -768,6 +768,8 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
     except Exception:
         orb_a = np.full((3, orbit_pts), np.nan)
         orb_b = np.full((3, orbit_pts), np.nan)
+        orb_a = np.nan_to_num(orb_a, nan=1e6, posinf=1e6, neginf=-1e6)
+        orb_b = np.nan_to_num(orb_b, nan=1e6, posinf=1e6, neginf=-1e6)
 
     # Animation step positions
     anim_off = np.arange(n_frames) * step_min / 1440.0
