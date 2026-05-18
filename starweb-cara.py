@@ -1048,18 +1048,21 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
                 y=1.02, x=0.5, xanchor="center", pad=dict(r=4),
                 direction="left",
                 buttons=[
-                    # 1x PLAY — 60ms per frame ≈ comfortable real-time feel
-                    dict(label="▶ PLAY 1x", method="animate",
-                         args=[None, dict(frame=dict(duration=60, redraw=True),
-                                         fromcurrent=True, mode="immediate")]),
-                    # 2x PLAY — 30ms per frame
+                    # 1x — every frame, 60ms each
+                    dict(label="▶ 1x", method="animate",
+                         args=[[str(k) for k in range(n_frames)],
+                               dict(frame=dict(duration=60, redraw=True),
+                                    fromcurrent=True, mode="immediate")]),
+                    # 2x — every 2nd frame, same duration → twice the orbit advance per step
                     dict(label="⏩ 2x", method="animate",
-                         args=[None, dict(frame=dict(duration=30, redraw=True),
-                                         fromcurrent=True, mode="immediate")]),
-                    # 5x PLAY — 12ms per frame (max browser speed)
+                         args=[[str(k) for k in range(0, n_frames, 2)],
+                               dict(frame=dict(duration=60, redraw=True),
+                                    fromcurrent=True, mode="immediate")]),
+                    # 5x — every 5th frame, same duration → five times the orbit advance per step
                     dict(label="⏭ 5x", method="animate",
-                         args=[None, dict(frame=dict(duration=12, redraw=True),
-                                         fromcurrent=True, mode="immediate")]),
+                         args=[[str(k) for k in range(0, n_frames, 5)],
+                               dict(frame=dict(duration=60, redraw=True),
+                                    fromcurrent=True, mode="immediate")]),
                     # STOP
                     dict(label="⏸ STOP", method="animate",
                          args=[[None], dict(frame=dict(duration=0, redraw=False), mode="immediate")]),
