@@ -488,6 +488,8 @@ DARK = dict(
 def fig_3d_orbits(sats):
     now    = ts.now()
     fig    = go.Figure()
+    
+    # Dünya kaplamasını yükle
     earth  = load_earth_texture(270)
     if earth:
         x, y, z, sc, cs = earth
@@ -503,19 +505,42 @@ def fig_3d_orbits(sats):
         fig.add_trace(go.Surface(
             x=r*np.cos(u)*np.sin(v), y=r*np.sin(u)*np.sin(v), z=r*np.cos(v),
             colorscale="Blues", opacity=.4, showscale=False))
+            
     colors  = ["#00c8ff","#00ff9d","#ffaa00","#ff6b00","#c060ff","#ff2b4d",
                "#60d0ff","#80ffb0","#ffcc60","#ff9060"]
     offsets = np.linspace(0, 95, 80) / 1440.0
+    
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
-        pos   = sat.at(times).position.km
         c     = colors[k % len(colors)]
-        fig.add_trace(go.Scatter3d(x=pos[0].tolist(), y=pos[1].tolist(), z=pos[2].tolist(), mode="lines",
-            line=dict(color=c, width=2.5), name=sat.name, opacity=0.95))
-        p0 = sat.at(now).position.km
-        fig.add_trace(go.Scatter3d(x=[p0[0]], y=[p0[1]], z=[p0[2]], mode="markers",
-            marker=dict(color=c, size=6, symbol="circle", line=dict(color="#ffffff", width=1)),
-            name=f"{sat.name} (now)", showlegend=False))
+        
+        # 1. Yörünge çizgisi hesaplaması ve güvenlik kontrolü
+        try:
+            pos = sat.at(times).position.km
+        except Exception:
+            pos = np.full((3, 80), np.nan)
+            
+        if not np.all(np.isnan(pos)):
+            fig.add_trace(go.Scatter3d(
+                x=pos[0].tolist(), y=pos[1].tolist(), z=pos[2].tolist(), 
+                mode="lines", line=dict(color=c, width=2.5), 
+                name=sat.name, opacity=0.95
+            ))
+            
+        # 2. Anlık pozisyon hesaplaması ve güvenlik kontrolü
+        try:
+            p0 = sat.at(now).position.km
+        except Exception:
+            p0 = np.full((3,), np.nan)
+            
+        if not np.any(np.isnan(p0)):
+            fig.add_trace(go.Scatter3d(
+                x=[float(p0[0])], y=[float(p0[1])], z=[float(p0[2])], 
+                mode="markers",
+                marker=dict(color=c, size=6, symbol="circle", line=dict(color="#ffffff", width=1)),
+                name=f"{sat.name} (now)", showlegend=False
+            ))
+            
     fig.update_layout(
         **DARK, margin=dict(l=0, r=0, t=0, b=0),
         scene=dict(bgcolor="#000408",
