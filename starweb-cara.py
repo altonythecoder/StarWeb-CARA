@@ -1367,9 +1367,10 @@ with tab2:
         with col_l:
             st.plotly_chart(fig_distance_profile(
                 row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km),
-                use_container_width=True)
+                use_container_width=True, key="dist_prof_tab2")
         with col_r:
-            st.plotly_chart(fig_risk_gauge(row["Pc (isotropic)"]), use_container_width=True)
+            st.plotly_chart(fig_risk_gauge(row["Pc (isotropic)"]), 
+                            use_container_width=True, key="risk_gauge_tab2")
 
         # Pc comparison
         st.markdown("**Collision Probability Model Comparison**")
@@ -1508,9 +1509,10 @@ with tab3:
             with col_l:
                 st.plotly_chart(
                     fig_distance_profile(row_my["_dist_arr"], window_hrs, row_my["Distance (km)"], sigma_km),
-                    use_container_width=True)
+                    use_container_width=True, key="dist_prof_tab3")
             with col_r:
-                st.plotly_chart(fig_risk_gauge(row_my["Pc (isotropic)"]), use_container_width=True)
+                st.plotly_chart(fig_risk_gauge(row_my["Pc (isotropic)"]), 
+                                use_container_width=True, key="risk_gauge_tab3")
 
             pc_c = st.columns(3)
             with pc_c[0]: st.metric("Chan 1997 (Isotropic)", f"{row_my['Pc (isotropic)']:.3e}")
@@ -1619,7 +1621,7 @@ with tab4:
 
             # 3D animation
             st.info("ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view.")
-            st.plotly_chart(anim_fig, use_container_width=True)
+            st.plotly_chart(anim_fig, use_container_width=True, key="anim_3d_tab4")
 
             # Distance profile (static)
             st.markdown("**Distance Profile (Full Window)**")
@@ -1647,7 +1649,7 @@ with tab4:
                 margin=dict(l=10, r=10, t=35, b=10),
                 legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
             )
-            st.plotly_chart(fig_dp_sim, use_container_width=True)
+            st.plotly_chart(fig_dp_sim, use_container_width=True, key="dist_prof_tab4")
 
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
