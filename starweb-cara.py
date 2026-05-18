@@ -919,46 +919,71 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
         return x * cos_a - y * sin_a, x * sin_a + y * cos_a, z
 
     def make_dynamic_traces(i):
+        """
+        Returns EXACTLY 5 traces every call (fixed count required by Plotly frames).
+        Earth rotation removed from frames — static Earth stays in base figure.
+        This prevents both the variable-trace crash and the memory overload.
+        """
         t0 = max(0, i - trail_len)
         ta = pos_a[:, t0:i+1]
         tb = pos_b[:, t0:i+1]
-        dc = dist_color(dists[i])
-        traces = []
-
-        # Safe Trails
-        if ta.shape[1] > 0 and not np.all(np.isnan(ta)):
-            traces.append(go.Scatter3d(
-                x=ta[0].tolist(), y=ta[1].tolist(), z=ta[2].tolist(),
-                mode="lines", line=dict(color="#00c8ff", width=2.5),
-                name=sat_a.name, showlegend=False))
-                
-        if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
-            traces.append(go.Scatter3d(
-                x=tb[0].tolist(), y=tb[1].tolist(), z=tb[2].tolist(),
-                mode="lines", line=dict(color="#ff6b00", width=2.5),
-                name=sat_b.name, showlegend=False))
-
-        # Safe Current positions
         pa = pos_a[:, i]
         pb = pos_b[:, i]
-        
+        dc = dist_color(dists[i])
+
+        # --- Trace 0: Trail A (always present, empty if invalid) ---
+        if ta.shape[1] > 0 and not np.all(np.isnan(ta)):
+            tr_trail_a = go.Scatter3d(
+                x=ta[0].tolist(), y=ta[1].tolist(), z=ta[2].tolist(),
+                mode="lines", line=dict(color="#00c8ff", width=2.5),
+                name=sat_a.name, showlegend=False)
+        else:
+            tr_trail_a = go.Scatter3d(
+                x=[], y=[], z=[], mode="lines",
+                line=dict(color="#00c8ff", width=2.5),
+                name=sat_a.name, showlegend=False)
+
+        # --- Trace 1: Trail B (always present, empty if invalid) ---
+        if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
+            tr_trail_b = go.Scatter3d(
+                x=tb[0].tolist(), y=tb[1].tolist(), z=tb[2].tolist(),
+                mode="lines", line=dict(color="#ff6b00", width=2.5),
+                name=sat_b.name, showlegend=False)
+        else:
+            tr_trail_b = go.Scatter3d(
+                x=[], y=[], z=[], mode="lines",
+                line=dict(color="#ff6b00", width=2.5),
+                name=sat_b.name, showlegend=False)
+
+        # --- Trace 2: Position A (always present, empty if invalid) ---
         if not np.any(np.isnan(pa)):
-            traces.append(go.Scatter3d(
+            tr_pos_a = go.Scatter3d(
                 x=[float(pa[0])], y=[float(pa[1])], z=[float(pa[2])],
                 mode="markers",
                 marker=dict(color="#00c8ff", size=9, line=dict(color="#fff", width=1)),
-                name=sat_a.name+" pos", showlegend=False))
-                
+                name=sat_a.name+" pos", showlegend=False)
+        else:
+            tr_pos_a = go.Scatter3d(
+                x=[], y=[], z=[], mode="markers",
+                marker=dict(color="#00c8ff", size=9),
+                name=sat_a.name+" pos", showlegend=False)
+
+        # --- Trace 3: Position B (always present, empty if invalid) ---
         if not np.any(np.isnan(pb)):
-            traces.append(go.Scatter3d(
+            tr_pos_b = go.Scatter3d(
                 x=[float(pb[0])], y=[float(pb[1])], z=[float(pb[2])],
                 mode="markers",
                 marker=dict(color="#ff6b00", size=9, line=dict(color="#fff", width=1)),
-                name=sat_b.name+" pos", showlegend=False))
+                name=sat_b.name+" pos", showlegend=False)
+        else:
+            tr_pos_b = go.Scatter3d(
+                x=[], y=[], z=[], mode="markers",
+                marker=dict(color="#ff6b00", size=9),
+                name=sat_b.name+" pos", showlegend=False)
 
-        # Safe Distance line
+        # --- Trace 4: Distance line (always present, empty if invalid) ---
         if not np.any(np.isnan(pa)) and not np.any(np.isnan(pb)):
-            traces.append(go.Scatter3d(
+            tr_dist = go.Scatter3d(
                 x=[float(pa[0]), float(pb[0])],
                 y=[float(pa[1]), float(pb[1])],
                 z=[float(pa[2]), float(pb[2])],
@@ -966,23 +991,16 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
                 line=dict(color=dc, width=2, dash="dot"),
                 text=["", f"  Δ {dists[i]:.1f} km"],
                 textfont=dict(color=dc, size=9, family="Space Mono"),
-                name="Distance", showlegend=False))
+                name="Distance", showlegend=False)
+        else:
+            tr_dist = go.Scatter3d(
+                x=[], y=[], z=[], mode="lines",
+                line=dict(color=dc, width=2, dash="dot"),
+                name="Distance", showlegend=False)
 
-        if earth_data is not None:
-            x, y, z, sc, cs = earth_data
-            time_hours = i * step_min / 60.0
-            earth_angle = np.radians(time_hours * 15.0)
-            ex_rot, ey_rot, ez_rot = rotate_earth(x, y, z, earth_angle)
-            traces.insert(0, go.Surface(
-                x=ex_rot, y=ey_rot, z=ez_rot,
-                surfacecolor=sc, colorscale=cs,
-                showscale=False, opacity=1.0, hoverinfo="skip",
-                lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
-                name="Earth",
-            ))
-
-        return traces
+        # NOTE: Earth texture is NOT included in frames (would be ~300MB for 180 frames).
+        # The static Earth added to the base figure remains visible throughout.
+        return [tr_trail_a, tr_trail_b, tr_pos_a, tr_pos_b, tr_dist]
 
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
