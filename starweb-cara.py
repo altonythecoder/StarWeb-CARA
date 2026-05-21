@@ -79,24 +79,24 @@ header[data-testid="stHeader"]{display:none !important;}
 @st.cache_data(show_spinner=False)
 def load_earth_texture(resolution: int = 360, style: str = "night"):
     """
-    Yüksek kaliteli NASA Dünya dokularını yükler ve Plotly Surface için optimize eder.
-    style: "night" (Gece Işıkları), "realistic" (Gerçekçi Blue Marble), "futuristic" (Mavi/Siyan Tonlu)
+    Loads high-resolution NASA Earth textures and optimizes them for Plotly Surface rendering.
+    style: "night" (Night Lights), "realistic" (Realistic Blue Marble), "futuristic" (Blue/Cyan Tonal)
     """
     try:
         if style == "night":
-            # NASA Black Marble (Gece Işıkları) - Karanlık tema için EN İYİSİ
+            # NASA Black Marble (Night Lights) - Optimal for dark theme
             urls = [
                 "https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.3600x1800.jpg",
                 "https://upload.wikimedia.org/wikipedia/commons/b/ba/The_earth_at_night.jpg"
             ]
         elif style == "realistic":
-            # NASA Blue Marble Next Generation (Yüksek Çözünürlüklü Gerçekçi)
+            # NASA Blue Marble Next Generation (High-Resolution Realistic)
             urls = [
                 "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg",
                 "https://upload.wikimedia.org/wikipedia/commons/a/ad/Blue_Marble_2002.png"
             ]
         else:
-            # Senin eski fütüristik temanın optimize edilmiş hali
+            # Optimized version of the futuristic theme
             urls = [
                 "https://upload.wikimedia.org/wikipedia/commons/c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg"
             ]
@@ -111,13 +111,13 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                 img  = Image.open(BytesIO(resp.content)).convert("RGB")
                 W, H = resolution * 2, resolution
                 
-                # LANCZOS filtresi, yeniden boyutlandırmada piksellenmeyi en aza indirir
+                # LANCZOS filter minimizes pixelation during resampling
                 img  = img.resize((W, H), Image.LANCZOS)
                 
                 img_array = np.array(img, dtype=np.float32)
                 
                 if style == "futuristic":
-                    # Fütüristik mavi/siyan renk işlemleri
+                    # Futuristic blue/cyan color processing
                     img_array = img_array * 0.4
                     img_array[:, :, 2] = np.clip(img_array[:, :, 2] * 1.4, 0, 255)
                     img_array[:, :, 1] = np.clip(img_array[:, :, 1] * 1.1, 0, 255)
@@ -125,13 +125,13 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                     img_array = np.clip((img_array - mean_val) * 1.3 + mean_val, 0, 255)
                     img_array = np.clip(img_array + 15, 0, 255)
                 elif style == "night":
-                    # Şehir ışıklarını hafifçe parlat, okyanusları tam siyah yap
+                    # Slightly enhance city lights, render oceans as pure black
                     img_array = np.clip(img_array * 1.3, 0, 255)
                 
                 img_array = img_array.astype(np.uint8)
                 img = Image.fromarray(img_array)
                 
-                # MEDIANCUT algoritması, 256 renk limitinde oluşan çamurlaşmayı engeller
+                # MEDIANCUT algorithm prevents color muddying under 256-color limit
                 imgq = img.quantize(colors=256, method=Image.MEDIANCUT)
                 pal  = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
                 
@@ -503,13 +503,13 @@ def fig_3d_orbits(sats):
     now    = ts.now()
     fig    = go.Figure()
     
-    # Dünya kaplamasını yükle
+    # Load Earth texture
     earth = load_earth_texture(resolution=360, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(go.Surface(
             x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
-            showscale=False, opacity=1.0, hoverinfo="skip", name="Dunya",
+            showscale=False, opacity=1.0, hoverinfo="skip", name="Earth",
             lightposition=dict(x=0, y=0, z=10000),
             lighting=dict(ambient=0.6, diffuse=0.92, specular=0.04, roughness=0.85, fresnel=0.05),
         ))
@@ -528,7 +528,7 @@ def fig_3d_orbits(sats):
         times = ts.tt_jd(now.tt + offsets)
         c     = colors[k % len(colors)]
         
-        # 1. Yörünge çizgisi hesaplaması ve güvenlik kontrolü
+        # 1. Orbit trajectory calculation with error handling
         try:
             pos = sat.at(times).position.km
         except Exception:
@@ -541,7 +541,7 @@ def fig_3d_orbits(sats):
                 name=sat.name, opacity=0.95
             ))
             
-        # 2. Anlık pozisyon hesaplaması ve güvenlik kontrolü
+        # 2. Instantaneous position calculation with error handling
         try:
             p0 = sat.at(now).position.km
         except Exception:
@@ -673,7 +673,7 @@ def fig_orbital_elements_radar(elems_list):
         if not elems:
             continue
         try:
-            # HATA BURADAYDI: "Mean Altitude a (km)" yerine "Mean Altitude (km)" yapıldı.
+            # Error fix: Changed "Mean Altitude a (km)" to "Mean Altitude (km)"
             alt  = float(str(elems.get("Mean Altitude (km)", 0)))
             incl = float(str(elems.get("Inclination i (°)", 0)))
             ecc  = float(str(elems.get("Eccentricity e", "0")))
@@ -1064,7 +1064,7 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs: int = 6, show_orbits: boo
 
     fig.frames = frames
 
-    # Animasyon başlamadan önce ekranda duracak ilk açılış başlığı
+    # Initial title displayed before animation starts
     base_t_utc = ts.tt_jd(anim_jd[0]).utc_strftime('%H:%M UTC')
     base_title = f"{sat_a.name} × {sat_b.name} <br><sup style='color:#b8cfe0;'>⏱ T+0 min &nbsp;|&nbsp; {base_t_utc} &nbsp;|&nbsp; Δ {dists[0]:.1f} km</sup>"
 
@@ -1654,10 +1654,10 @@ with tab4:
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
-    # Kendi uydumuzu (varsa) görselleştirme listesine ekleyelim
+    # Include user-defined satellite (if available) in visualization list
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
-        # En başa ekliyoruz ki grafikte her zaman ilk rengi (açık mavi) alsın ve dikkat çeksin
+        # Insert at beginning to ensure first color (light blue) and prominence in plot
         display_sats.insert(0, st.session_state["my_sat"])
 
     c1_3d, c2_3d = st.columns([3, 2])
@@ -1680,7 +1680,7 @@ with tab5:
 with tab6:
     st.markdown("## Orbital Elements and Space Distribution")
     
-    # Kendi uydumuzu radar ve tablo listesine de dahil edelim
+    # Include user-defined satellite in radar and table lists as well
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
         display_sats.insert(0, st.session_state["my_sat"])
