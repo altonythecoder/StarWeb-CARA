@@ -100,8 +100,8 @@ Not only collision probability, but also the magnitude of potential disaster sho
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/leo-conjunction-analysis.git
-cd leo-conjunction-analysis
+git clone https://github.com/altonythecoder/StarWeb-CARA
+cd StarWeb-CARA
 ```
 
 2. Create a virtual environment (recommended):
@@ -117,7 +117,7 @@ pip install streamlit pandas numpy plotly skyfield spacetrack scipy pillow reque
 
 4. Run the application:
 ```bash
-streamlit run leooing.py
+streamlit run starweb-cara.py
 ```
 
 The application will open in your default web browser at `http://localhost:8501`.
