@@ -1160,7 +1160,7 @@ user_email  = st.sidebar.text_input("Email", placeholder="user@domain.com")
 user_pass   = st.sidebar.text_input("Password", placeholder="........", type="password")
 st.sidebar.markdown("**Target Satellite Constellation** *(focused on LEO fleets only)*")
 search_term = st.sidebar.selectbox("Select constellation",
-    ["STARLINK", "ISS", "ONEWEB"], label_visibility="collapsed")
+    ["STARLINK", "ISS(will be updated)", "ONEWEB"], label_visibility="collapsed")
 if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
     if user_email and user_pass:
         with st.spinner("Connecting to Space-Track database..."):
