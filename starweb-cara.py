@@ -1135,7 +1135,7 @@ st.markdown("""
 <div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
   <div style="font-family:'Space Mono',monospace; font-size:.68rem;
               color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    Conjunction Assessment and Collision Risk Analysis (starlink/iss/oneweb)
+    Conjunction Assessment and Collision Risk Analysis (starlink/oneweb)
   </div>
   <h1 style="margin:0; padding:0; font-size:1.7rem;">
     Low Earth Orbit<br>
