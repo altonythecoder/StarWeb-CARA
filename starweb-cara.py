@@ -3,7 +3,6 @@ import math
 from datetime import datetime, timezone
 from io import BytesIO
 from itertools import combinations
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -12,7 +11,7 @@ import spacetrack.operators as op
 import streamlit as st
 from PIL import Image
 from scipy.integrate import dblquad
-from scipy.stats import chi2, norm
+from scipy.stats import norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
@@ -20,6 +19,10 @@ ts = load.timescale()
 
 MANUAL_SAT_DEFAULT_MASS_KG = 250
 MASS_WIDGET_MAX_KG = 500_000.0
+EARTH_RADIUS_KM = 6371.0
+MU_EARTH_KM3_S2 = 398600.4418
+ANALYSIS_STEP_MIN = 5
+CONJUNCTION_DISTANCE_THRESHOLD_KM = 500.0
 
 GROUP_CONFIG = {
     "STARLINK": {
@@ -69,6 +72,19 @@ GROUP_CONFIG = {
 
 def get_group_default_mass(group_key: str) -> int:
     return int(GROUP_CONFIG.get(group_key, {}).get("default_mass_kg", 250))
+
+
+def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN):
+    n_steps = max(1, int(window_hrs * 60 // step_min) + 1)
+    offsets = np.arange(n_steps, dtype=float) * step_min / 1440.0
+    return ts.tt_jd(start_tt + offsets), offsets
+
+
+def propagated_positions(sat, times):
+    try:
+        return sat.at(times).position.km
+    except Exception:
+        return None
 
 
 def _set_mass_widget_values(mass_a: float, mass_b: float):
@@ -242,7 +258,7 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                 lon = np.linspace(-np.pi, np.pi, W)
                 lon_g, lat_g = np.meshgrid(lon, lat)
 
-                R = 6371.0
+                R = EARTH_RADIUS_KM
                 x = R * np.cos(lat_g) * np.cos(lon_g)
                 y = R * np.cos(lat_g) * np.sin(lon_g)
                 z = R * np.sin(lat_g)
@@ -406,10 +422,10 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
         mean_m = math.degrees(model.mo)  # mean anomaly (deg)
         n_rpm = model.no_kozai * (60.0 / (2 * math.pi))  # rad/min → devir/min
         # Semi-major axis: a = (GM/n^2)^(1/3), n rad/s
-        GM = 398600.4418  # km^3/s^2
+        GM = MU_EARTH_KM3_S2  # km^3/s^2
         n_rads = model.no_kozai / 60.0  # rad/s
         a_km = (GM / n_rads**2) ** (1 / 3)
-        alt_km = a_km - 6371.0
+        alt_km = a_km - EARTH_RADIUS_KM
         period_min = 2 * math.pi / model.no_kozai
         return {
             "Semi-major Axis a (km)": round(a_km, 1),
@@ -436,8 +452,8 @@ def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
     altitude bands.
     q1 > Q2 + D   →   physical intersection impossible → filtered
     """
-    R_E = 6371.0
-    GM = 398600.4418
+    R_E = EARTH_RADIUS_KM
+    GM = MU_EARTH_KM3_S2
 
     def apsis(sat):
         try:
@@ -647,6 +663,7 @@ def compute_conjunctions(
     sats: list,
     window_hrs: int,
     sigma_km: float,
+    hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
 ) -> tuple:
@@ -655,36 +672,43 @@ def compute_conjunctions(
     Returns: (df_results, n_apsis_filtered, n_total_pairs)
     """
     now = ts.now()
-    step_m = 5
-    n_steps = window_hrs * 60 // step_m
-    n_total = len(list(combinations(sats, 2)))
+    times, _ = build_time_grid(now.tt, window_hrs)
+    jd_values = np.asarray(times.tt)
+    n_total = len(sats) * (len(sats) - 1) // 2
 
     # Apsis pre-filter
     candidate_pairs = apsis_filter(sats, threshold_km=100.0)
     n_filtered = n_total - len(candidate_pairs)
+    positions_by_id = {}
+    for s1, s2 in candidate_pairs:
+        for sat in (s1, s2):
+            sat_id = id(sat)
+            if sat_id not in positions_by_id:
+                positions_by_id[sat_id] = propagated_positions(sat, times)
 
     results = []
     for s1, s2 in candidate_pairs:
-        min_d = np.inf
-        best_t = None
-        dist_arr = []
+        pos1 = positions_by_id.get(id(s1))
+        pos2 = positions_by_id.get(id(s2))
+        if pos1 is None or pos2 is None:
+            continue
 
-        for i in range(n_steps):
-            t = ts.tt_jd(now.tt + i * step_m / 1440.0)
-            p1 = s1.at(t).position.km
-            p2 = s2.at(t).position.km
-            d = float(np.linalg.norm(p1 - p2))
-            dist_arr.append(d)
-            if d < min_d:
-                min_d, best_t = d, t
+        dists = np.linalg.norm(pos1 - pos2, axis=0)
+        if len(dists) == 0 or np.all(np.isnan(dists)):
+            continue
 
-        if min_d >= 500:
+        tca_idx = int(np.nanargmin(dists))
+        min_d = float(dists[tca_idx])
+        best_t = ts.tt_jd(float(jd_values[tca_idx]))
+        dist_arr = dists.tolist()
+
+        if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
             continue
 
         rel_vel = _relative_velocity(s1, s2, best_t)
-        pc_iso = collision_probability_isotropic(min_d, sigma_km)
-        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km)
-        pc_max = max_pc_analysis(min_d)
+        pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
+        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km, hbr_km)
+        pc_max = max_pc_analysis(min_d, hbr_km)
         mah = mahalanobis_test(min_d, sigma_km)
         dil = dilution_check(pc_iso, sigma_km, min_d)
         frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
@@ -773,7 +797,7 @@ def fig_3d_orbits(sats):
             )
         )
     else:
-        r = 6371
+        r = EARTH_RADIUS_KM
         u, v = np.mgrid[0 : 2 * np.pi : 40j, 0 : np.pi : 20j]
         fig.add_trace(
             go.Surface(
@@ -889,7 +913,11 @@ def fig_ground_tracks(sats):
     fig = go.Figure()
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
-        geo = wgs84.subpoint_of(sat.at(times))
+        try:
+            geo = wgs84.subpoint_of(sat.at(times))
+            g0 = wgs84.subpoint_of(sat.at(now))
+        except Exception:
+            continue
         c = colors[k % len(colors)]
         fig.add_trace(
             go.Scattergeo(
@@ -901,7 +929,6 @@ def fig_ground_tracks(sats):
                 opacity=0.85,
             )
         )
-        g0 = wgs84.subpoint_of(sat.at(ts.now()))
         fig.add_trace(
             go.Scattergeo(
                 lat=[g0.latitude.degrees],
@@ -973,14 +1000,14 @@ def fig_ground_tracks(sats):
     return fig
 
 
-def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km):
-    step_m = 5
+def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
+    step_m = ANALYSIS_STEP_MIN
     t_axis = np.arange(len(dist_arr)) * step_m / 60.0
     fig = go.Figure()
     fig.add_hline(
-        y=0.02,
+        y=hbr_km,
         line=dict(color="#ff2b4d", dash="dot", width=1),
-        annotation_text="HBR (20 m)",
+        annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
         annotation_font_size=9,
     )
     fig.add_hrect(
@@ -1000,20 +1027,22 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km):
             fillcolor="rgba(0,200,255,.04)",
         )
     )
-    tca_i = int(np.argmin(dist_arr))
-    fig.add_trace(
-        go.Scatter(
-            x=[t_axis[tca_i]],
-            y=[dist_arr[tca_i]],
-            mode="markers+text",
-            marker=dict(color="#ff2b4d", size=8),
-            text=[f" TCA: {dist_arr[tca_i]:.1f} km"],
-            textposition="top right",
-            textfont=dict(size=9, family="Space Mono", color="#ff2b4d"),
-            name="TCA",
-            showlegend=False,
+    dist_np = np.asarray(dist_arr, dtype=float)
+    if len(dist_np) and not np.all(np.isnan(dist_np)):
+        tca_i = int(np.nanargmin(dist_np))
+        fig.add_trace(
+            go.Scatter(
+                x=[t_axis[tca_i]],
+                y=[dist_np[tca_i]],
+                mode="markers+text",
+                marker=dict(color="#ff2b4d", size=8),
+                text=[f" TCA: {dist_np[tca_i]:.1f} km"],
+                textposition="top right",
+                textfont=dict(size=9, family="Space Mono", color="#ff2b4d"),
+                name="TCA",
+                showlegend=False,
+            )
         )
-    )
     fig.update_layout(
         **DARK,
         height=280,
@@ -1143,6 +1172,7 @@ def compute_conjunctions_custom(
     sats: list,
     window_hrs: int,
     sigma_km: float,
+    hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
 ) -> pd.DataFrame:
@@ -1151,9 +1181,9 @@ def compute_conjunctions_custom(
     Apsis filter + 5-min TCA scan + full Pc metrics.
     """
     now = ts.now()
-    step_m = 5
-    n_steps = window_hrs * 60 // step_m
-    R_E, GM = 6371.0, 398600.4418
+    times, _ = build_time_grid(now.tt, window_hrs)
+    jd_values = np.asarray(times.tt)
+    R_E, GM = EARTH_RADIUS_KM, MU_EARTH_KM3_S2
 
     def apsis(sat):
         try:
@@ -1165,7 +1195,10 @@ def compute_conjunctions_custom(
             return 0.0, 10000.0
 
     my_q, my_Q = apsis(my_sat)
+    my_pos = propagated_positions(my_sat, times)
     results = []
+    if my_pos is None:
+        return pd.DataFrame(results)
 
     for sat in sats:
         q, Q = apsis(sat)
@@ -1173,26 +1206,26 @@ def compute_conjunctions_custom(
         if max(my_q, q) > min(my_Q, Q) + 100.0:
             continue
 
-        min_d = np.inf
-        best_t = None
-        dist_arr = []
+        sat_pos = propagated_positions(sat, times)
+        if sat_pos is None:
+            continue
 
-        for i in range(n_steps):
-            t = ts.tt_jd(now.tt + i * step_m / 1440.0)
-            p1 = my_sat.at(t).position.km
-            p2 = sat.at(t).position.km
-            d = float(np.linalg.norm(p1 - p2))
-            dist_arr.append(d)
-            if d < min_d:
-                min_d, best_t = d, t
+        dists = np.linalg.norm(my_pos - sat_pos, axis=0)
+        if len(dists) == 0 or np.all(np.isnan(dists)):
+            continue
 
-        if min_d >= 500:
+        tca_idx = int(np.nanargmin(dists))
+        min_d = float(dists[tca_idx])
+        best_t = ts.tt_jd(float(jd_values[tca_idx]))
+        dist_arr = dists.tolist()
+
+        if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
             continue
 
         rel_vel = _relative_velocity(my_sat, sat, best_t)
-        pc_iso = collision_probability_isotropic(min_d, sigma_km)
-        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km)
-        pc_max = max_pc_analysis(min_d)
+        pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
+        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km, hbr_km)
+        pc_max = max_pc_analysis(min_d, hbr_km)
         mah = mahalanobis_test(min_d, sigma_km)
         dil = dilution_check(pc_iso, sigma_km, min_d)
         frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
@@ -1234,7 +1267,12 @@ def compute_conjunctions_custom(
 
 
 def fig_animated_conjunction(
-    sat_a, sat_b, window_hrs: int = 6, show_orbits: bool = True, show_tca: bool = True
+    sat_a,
+    sat_b,
+    window_hrs: int = 6,
+    show_orbits: bool = True,
+    show_tca: bool = True,
+    center_tt: float = None,
 ):
     """
     3D Plotly figure showing two satellites with real-time animation.
@@ -1243,26 +1281,32 @@ def fig_animated_conjunction(
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
     # Target max ~120 frames so browser doesn't choke.
-    step_min = max(3, window_hrs * 60 // 120)
-    n_frames = min(window_hrs * 60 // step_min, 120)
+    sim_start_tt = (
+        float(center_tt) - (window_hrs / 2.0) / 24.0
+        if center_tt is not None
+        else now.tt
+    )
+    max_frames = 96
+    step_min = max(2, int(math.ceil(window_hrs * 60 / max_frames)))
+    n_frames = min(max(2, int(math.ceil(window_hrs * 60 / step_min)) + 1), max_frames)
     if n_frames < 2:
-        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([now.tt]), now.tt
+        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([sim_start_tt]), sim_start_tt
 
-    trail_len = 15  # was 25 — shorter trail = smaller Scatter3d per frame
-    orbit_pts = 80  # was 100
+    trail_len = min(18, max(8, n_frames // 5))
+    orbit_pts = 72
 
     # Full orbit paths (static background)
     orb_off = np.linspace(0, 96, orbit_pts) / 1440.0
     try:
-        orb_a = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
-        orb_b = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
+        orb_a = sat_a.at(ts.tt_jd(sim_start_tt + orb_off)).position.km
+        orb_b = sat_b.at(ts.tt_jd(sim_start_tt + orb_off)).position.km
     except Exception:
         orb_a = np.full((3, orbit_pts), np.nan)
         orb_b = np.full((3, orbit_pts), np.nan)
 
     # Animation step positions
     anim_off = np.arange(n_frames) * step_min / 1440.0
-    anim_jd = now.tt + anim_off
+    anim_jd = sim_start_tt + anim_off
     try:
         pos_a = sat_a.at(ts.tt_jd(anim_jd)).position.km
         pos_b = sat_b.at(ts.tt_jd(anim_jd)).position.km
@@ -1291,12 +1335,32 @@ def fig_animated_conjunction(
 
     fig = go.Figure()
 
+    rng = np.random.default_rng(7)
+    star_count = 90
+    star_phi = rng.uniform(0, 2 * np.pi, star_count)
+    star_costheta = rng.uniform(-1, 1, star_count)
+    star_theta = np.arccos(star_costheta)
+    star_r = rng.uniform(12500, 16500, star_count)
+    fig.add_trace(
+        go.Scatter3d(
+            x=(star_r * np.sin(star_theta) * np.cos(star_phi)).tolist(),
+            y=(star_r * np.sin(star_theta) * np.sin(star_phi)).tolist(),
+            z=(star_r * np.cos(star_theta)).tolist(),
+            mode="markers",
+            marker=dict(
+                size=rng.uniform(1.0, 2.4, star_count).tolist(),
+                color="rgba(210,235,255,0.55)",
+            ),
+            hoverinfo="skip",
+            showlegend=False,
+            name="Star field",
+        )
+    )
+
     # Perf: lower resolution → fewer WebGL vertices → much faster render per frame
-    earth = load_earth_texture(resolution=80, style="night")
-    earth_data = None
+    earth = load_earth_texture(resolution=72, style="night")
     if earth:
         x, y, z, sc, cs = earth
-        earth_data = (x, y, z, sc, cs)
         fig.add_trace(
             go.Surface(
                 x=x,
@@ -1305,15 +1369,15 @@ def fig_animated_conjunction(
                 surfacecolor=sc,
                 colorscale=cs,
                 showscale=False,
-                opacity=1.0,
+                opacity=0.98,
                 hoverinfo="skip",
                 lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
+                lighting=dict(ambient=0.72, diffuse=0.88, specular=0.05, roughness=0.82),
                 name="Earth",
             )
         )
     else:
-        r = 6371.0
+        r = EARTH_RADIUS_KM
         u, v = np.mgrid[0 : 2 * np.pi : 120j, 0 : np.pi : 60j]
         colorscale_earth = [
             [0.0, "#081828"],
@@ -1339,7 +1403,7 @@ def fig_animated_conjunction(
 
     # Coordinate reference lines — MINIMAL set (was 20 traces, now 3).
     # Fewer static traces = dramatically faster per-frame WebGL redraw.
-    r_earth = 6371.0
+    r_earth = EARTH_RADIUS_KM
     _pts = 80
     _lat_pm = np.linspace(-np.pi / 2, np.pi / 2, _pts)
     _lon_eq = np.linspace(-np.pi, np.pi, _pts)
@@ -1388,7 +1452,7 @@ def fig_animated_conjunction(
                 y=orb_a[1].tolist(),
                 z=orb_a[2].tolist(),
                 mode="lines",
-                line=dict(color="rgba(0,200,255,0.12)", width=1.5),
+                line=dict(color="rgba(0,200,255,0.22)", width=2),
                 name=sat_a.name + " orbit",
                 showlegend=False,
             )
@@ -1401,7 +1465,7 @@ def fig_animated_conjunction(
                 y=orb_b[1].tolist(),
                 z=orb_b[2].tolist(),
                 mode="lines",
-                line=dict(color="rgba(255,107,0,0.12)", width=1.5),
+                line=dict(color="rgba(255,107,0,0.22)", width=2),
                 name=sat_b.name + " orbit",
                 showlegend=False,
             )
@@ -1409,6 +1473,52 @@ def fig_animated_conjunction(
 
     # TCA point
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
+    pa_tca = pos_a[:, tca_idx]
+    pb_tca = pos_b[:, tca_idx]
+
+    if show_tca and not np.any(np.isnan(mid_tca)):
+        ring_radius = max(140.0, min(900.0, max(tca_dist * 1.6, 180.0)))
+        ring_angle = np.linspace(0, 2 * np.pi, 96)
+        normal = (
+            mid_tca / np.linalg.norm(mid_tca)
+            if np.linalg.norm(mid_tca) > 0
+            else np.array([0.0, 0.0, 1.0])
+        )
+        basis_a = np.cross(normal, np.array([0.0, 0.0, 1.0]))
+        if np.linalg.norm(basis_a) < 1e-6:
+            basis_a = np.cross(normal, np.array([0.0, 1.0, 0.0]))
+        basis_a = basis_a / np.linalg.norm(basis_a)
+        basis_b = np.cross(normal, basis_a)
+        ring = (
+            mid_tca[:, None]
+            + ring_radius * np.cos(ring_angle)[None, :] * basis_a[:, None]
+            + ring_radius * np.sin(ring_angle)[None, :] * basis_b[:, None]
+        )
+        fig.add_trace(
+            go.Scatter3d(
+                x=ring[0].tolist(),
+                y=ring[1].tolist(),
+                z=ring[2].tolist(),
+                mode="lines",
+                line=dict(color="rgba(255,43,77,0.55)", width=3),
+                hoverinfo="skip",
+                showlegend=False,
+                name="TCA risk zone",
+            )
+        )
+        if not np.any(np.isnan(pa_tca)) and not np.any(np.isnan(pb_tca)):
+            fig.add_trace(
+                go.Scatter3d(
+                    x=[float(pa_tca[0]), float(pb_tca[0])],
+                    y=[float(pa_tca[1]), float(pb_tca[1])],
+                    z=[float(pa_tca[2]), float(pb_tca[2])],
+                    mode="lines",
+                    line=dict(color="rgba(255,43,77,0.72)", width=4, dash="dot"),
+                    hoverinfo="skip",
+                    showlegend=False,
+                    name="Closest approach chord",
+                )
+            )
 
     # ── TCA-FACING CAMERA ALGORITHM ──────────────────────────────────────────
     # Strategy: position camera in the direction of TCA from Earth center so
@@ -1469,11 +1579,6 @@ def fig_animated_conjunction(
 
     n_static = len(fig.data)
 
-    def rotate_earth(x, y, z, angle_rad):
-        cos_a = np.cos(angle_rad)
-        sin_a = np.sin(angle_rad)
-        return x * cos_a - y * sin_a, x * sin_a + y * cos_a, z
-
     def make_dynamic_traces(i):
         """
         Always returns EXACTLY 5 traces (Plotly frame update requires fixed count).
@@ -1486,6 +1591,7 @@ def fig_animated_conjunction(
         pb = pos_b[:, i]
         d_val = dists[i]
         dc = dist_color(d_val)
+        beam_width = 4 if not np.isnan(d_val) and d_val < 200 else 3
         dist_txt = f"  Δ {d_val:.1f} km" if not np.isnan(d_val) else ""
 
         # Trace 0 — Trail A
@@ -1495,7 +1601,7 @@ def fig_animated_conjunction(
                 y=ta[1].tolist(),
                 z=ta[2].tolist(),
                 mode="lines",
-                line=dict(color="#00c8ff", width=2.5),
+                line=dict(color="rgba(0,200,255,0.95)", width=3.5),
                 name=sat_a.name,
                 showlegend=False,
             )
@@ -1505,7 +1611,7 @@ def fig_animated_conjunction(
                 y=[],
                 z=[],
                 mode="lines",
-                line=dict(color="#00c8ff", width=2.5),
+                line=dict(color="rgba(0,200,255,0.95)", width=3.5),
                 name=sat_a.name,
                 showlegend=False,
             )
@@ -1517,7 +1623,7 @@ def fig_animated_conjunction(
                 y=tb[1].tolist(),
                 z=tb[2].tolist(),
                 mode="lines",
-                line=dict(color="#ff6b00", width=2.5),
+                line=dict(color="rgba(255,107,0,0.95)", width=3.5),
                 name=sat_b.name,
                 showlegend=False,
             )
@@ -1527,7 +1633,7 @@ def fig_animated_conjunction(
                 y=[],
                 z=[],
                 mode="lines",
-                line=dict(color="#ff6b00", width=2.5),
+                line=dict(color="rgba(255,107,0,0.95)", width=3.5),
                 name=sat_b.name,
                 showlegend=False,
             )
@@ -1539,7 +1645,13 @@ def fig_animated_conjunction(
                 y=[float(pa[1])],
                 z=[float(pa[2])],
                 mode="markers",
-                marker=dict(color="#00c8ff", size=9, line=dict(color="#fff", width=1)),
+                marker=dict(
+                    color="#00c8ff",
+                    size=12,
+                    symbol="diamond",
+                    line=dict(color="#ffffff", width=1.2),
+                    opacity=0.98,
+                ),
                 name=sat_a.name + " pos",
                 showlegend=False,
             )
@@ -1549,7 +1661,7 @@ def fig_animated_conjunction(
                 y=[],
                 z=[],
                 mode="markers",
-                marker=dict(color="#00c8ff", size=9),
+                marker=dict(color="#00c8ff", size=12, symbol="diamond"),
                 name=sat_a.name + " pos",
                 showlegend=False,
             )
@@ -1561,7 +1673,13 @@ def fig_animated_conjunction(
                 y=[float(pb[1])],
                 z=[float(pb[2])],
                 mode="markers",
-                marker=dict(color="#ff6b00", size=9, line=dict(color="#fff", width=1)),
+                marker=dict(
+                    color="#ff6b00",
+                    size=12,
+                    symbol="circle",
+                    line=dict(color="#ffffff", width=1.2),
+                    opacity=0.98,
+                ),
                 name=sat_b.name + " pos",
                 showlegend=False,
             )
@@ -1571,7 +1689,7 @@ def fig_animated_conjunction(
                 y=[],
                 z=[],
                 mode="markers",
-                marker=dict(color="#ff6b00", size=9),
+                marker=dict(color="#ff6b00", size=12, symbol="circle"),
                 name=sat_b.name + " pos",
                 showlegend=False,
             )
@@ -1583,9 +1701,9 @@ def fig_animated_conjunction(
                 y=[float(pa[1]), float(pb[1])],
                 z=[float(pa[2]), float(pb[2])],
                 mode="lines+text",
-                line=dict(color=dc, width=2, dash="dot"),
+                line=dict(color=dc, width=beam_width, dash="dot"),
                 text=["", dist_txt],
-                textfont=dict(color=dc, size=9, family="Space Mono"),
+                textfont=dict(color=dc, size=10, family="Space Mono"),
                 name="Distance",
                 showlegend=False,
             )
@@ -1595,7 +1713,7 @@ def fig_animated_conjunction(
                 y=[],
                 z=[],
                 mode="lines",
-                line=dict(color=dc, width=2, dash="dot"),
+                line=dict(color=dc, width=beam_width, dash="dot"),
                 name="Distance",
                 showlegend=False,
             )
@@ -2041,7 +2159,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
 with tab1:
     with st.spinner("Apsis filter + conjunction analysis..."):
         df, n_filtered, n_total = compute_conjunctions(
-            sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg
+            sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg
         )
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -2189,7 +2307,7 @@ with tab2:
         with col_l:
             st.plotly_chart(
                 fig_distance_profile(
-                    row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km
+                    row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km, hbr_km
                 ),
                 use_container_width=True,
                 key="dist_prof_tab2",
@@ -2223,7 +2341,9 @@ with tab2:
         )
 
         # Fragmentation analysis
-        frag = fragmentation_probability(row["Relative Velocity (km/s)"])
+        frag = fragmentation_probability(
+            row["Relative Velocity (km/s)"], mass_a_kg, mass_b_kg
+        )
         st.markdown("**Collision Consequence Analysis**")
         fc1, fc2, fc3 = st.columns(3)
         with fc1:
@@ -2308,7 +2428,7 @@ with tab3:
 
         with st.spinner(f"Running conjunction analysis for {my_sat.name}..."):
             df_my = compute_conjunctions_custom(
-                my_sat, sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg
+                my_sat, sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg
             )
 
         if df_my.empty:
@@ -2417,6 +2537,7 @@ with tab3:
                         window_hrs,
                         row_my["Distance (km)"],
                         sigma_km,
+                        hbr_km,
                     ),
                     use_container_width=True,
                     key="dist_prof_tab3",
@@ -2445,7 +2566,9 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-            frag_my = fragmentation_probability(row_my["Relative Velocity (km/s)"])
+            frag_my = fragmentation_probability(
+                row_my["Relative Velocity (km/s)"], mass_a_kg, mass_b_kg
+            )
             fc = st.columns(3)
             with fc[0]:
                 st.metric("Ec (J/g)", f"{frag_my['E_c_J_per_g']:.1f}")
@@ -2562,7 +2685,7 @@ with tab4:
             # TCA info
             tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
             sev_sim, col_sim = risk_level(
-                collision_probability_isotropic(tca_d, sigma_km)
+                collision_probability_isotropic(tca_d, sigma_km, hbr_km)
             )
             tca_tplus_min = int(round((tca_tt - jd_arr[0]) * 1440))
             tc1, tc2, tc3, tc4 = st.columns(4)
@@ -2586,9 +2709,9 @@ with tab4:
             t_ax = (jd_arr - jd_arr[0]) * 24.0
             fig_dp_sim = go.Figure()
             fig_dp_sim.add_hline(
-                y=0.02,
+                y=hbr_km,
                 line=dict(color="#ff2b4d", dash="dot", width=1),
-                annotation_text="HBR (20 m)",
+                annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
             )
             fig_dp_sim.add_trace(
                 go.Scatter(
@@ -2601,18 +2724,20 @@ with tab4:
                     name="Distance (km)",
                 )
             )
-            tca_profile_idx = int(np.nanargmin(dists_arr)) if len(dists_arr) else 0
-            fig_dp_sim.add_trace(
-                go.Scatter(
-                    x=[t_ax[tca_profile_idx]],
-                    y=[dists_arr[tca_profile_idx]],
-                    mode="markers+text",
-                    marker=dict(color="#ff2b4d", size=10),
-                    text=[f" TCA {dists_arr[tca_profile_idx]:.1f} km"],
-                    textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
-                    name="TCA",
+            dists_profile = np.asarray(dists_arr, dtype=float)
+            if len(dists_profile) and not np.all(np.isnan(dists_profile)):
+                tca_profile_idx = int(np.nanargmin(dists_profile))
+                fig_dp_sim.add_trace(
+                    go.Scatter(
+                        x=[t_ax[tca_profile_idx]],
+                        y=[dists_profile[tca_profile_idx]],
+                        mode="markers+text",
+                        marker=dict(color="#ff2b4d", size=10),
+                        text=[f" TCA {dists_profile[tca_profile_idx]:.1f} km"],
+                        textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
+                        name="TCA",
+                    )
                 )
-            )
             fig_dp_sim.update_layout(
                 **DARK,
                 height=240,
