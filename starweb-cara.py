@@ -1159,7 +1159,10 @@ def fig_3d_orbits(sats):
     fig = go.Figure()
 
     # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=360, style="realistic")
+    # Perf: 360 -> 130 çözünürlük, vertex sayısını 259.200'den ~33.800'e indirir
+    # (%87 azalma). Görsel kalite kaybı ihmal edilebilir düzeyde, çünkü Dünya
+    # sahnede küçük bir arka plan objesi, uydular ön planda.
+    earth = load_earth_texture(resolution=130, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1269,6 +1272,9 @@ def fig_3d_orbits(sats):
             aspectmode="cube",
             camera=dict(eye=dict(x=1.8, y=1.8, z=0.8), up=dict(x=0, y=0, z=1)),
         ),
+        # Perf + UX: Streamlit her rerun'da figürü yeniden oluşturur; uirevision
+        # olmadan kullanıcının döndürdüğü kamera her seferinde sıfırlanır.
+        uirevision="orbit-view-camera",
         legend=dict(
             font=dict(size=9, family="Space Mono", color="#c4d4e8"),
             bgcolor="rgba(5,7,10,.9)",
@@ -1752,7 +1758,9 @@ def fig_animated_conjunction(
     )
 
     # Perf: lower resolution → fewer WebGL vertices → much faster render per frame
-    earth = load_earth_texture(resolution=72, style="night")
+    # 72 -> 42: vertex sayısı 10.368'den ~3.528'e iner (%66 azalma). Animasyonda
+    # Dünya statik arka plan olduğu için bu fark gözle neredeyse hiç fark edilmez.
+    earth = load_earth_texture(resolution=42, style="night")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -2147,7 +2155,7 @@ def fig_animated_conjunction(
             dict(
                 args=[
                     [str(i)],
-                    dict(frame=dict(duration=0, redraw=True), mode="immediate"),
+                    dict(frame=dict(duration=0, redraw=False), mode="immediate"),
                 ],
                 label=lbl,
                 method="animate",
@@ -2178,6 +2186,9 @@ def fig_animated_conjunction(
             aspectmode="cube",
             camera=tca_camera,  # dynamically oriented toward TCA
         ),
+        # Perf + UX: kamera açısını frame güncellemeleri arasında korur, böylece
+        # redraw=False ile birlikte animasyon oynatılırken de kamera döndürülebilir.
+        uirevision="anim-camera",
         legend=dict(
             font=dict(size=8, family="Space Mono"),
             bgcolor="rgba(0,4,8,.85)",
@@ -2206,7 +2217,8 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(n_frames)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
+                                transition=dict(duration=0, easing="linear"),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2218,7 +2230,8 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 2)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
+                                transition=dict(duration=0, easing="linear"),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2230,7 +2243,8 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 5)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
+                                transition=dict(duration=0, easing="linear"),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2251,7 +2265,11 @@ def fig_animated_conjunction(
                         method="animate",
                         args=[
                             [str(tca_idx)],
-                            dict(frame=dict(duration=0, redraw=True), mode="immediate"),
+                            dict(
+                                frame=dict(duration=0, redraw=False),
+                                transition=dict(duration=0),
+                                mode="immediate",
+                            ),
                         ],
                     ),
                 ],
@@ -3155,7 +3173,7 @@ with tab4:
 
             # 3D animation
             st.info(
-                "ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view."
+                "ℹ️ Tip: You can freely rotate/zoom the camera while the animation plays. Use STOP or the timeline slider to pause and inspect a specific moment."
             )
             st.plotly_chart(anim_fig, use_container_width=True, key="anim_3d_tab4")
 
