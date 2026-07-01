@@ -1,8 +1,11 @@
 # Thesis version accompanying Altay ÇAVUŞ - StarWeb-CARA (2026)
+# Enhanced and Optimized Version - 2026
 import math
 from datetime import datetime, timezone
 from io import BytesIO
 from itertools import combinations
+from functools import lru_cache
+import time
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -15,7 +18,12 @@ from scipy.stats import norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
-ts = load.timescale()
+# Initialize timescale with error handling
+try:
+    ts = load.timescale()
+except Exception as e:
+    st.error(f"Skyfield timescale initialization failed: {e}")
+    ts = None
 
 MANUAL_SAT_DEFAULT_MASS_KG = 250
 MASS_WIDGET_MAX_KG = 500_000.0
@@ -81,9 +89,13 @@ def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_S
 
 
 def propagated_positions(sat, times):
+    """
+    Enhanced position propagation with better error handling and performance monitoring.
+    """
     try:
         return sat.at(times).position.km
-    except Exception:
+    except Exception as e:
+        st.warning(f"Position propagation error for {sat.name}: {str(e)[:50]}")
         return None
 
 
@@ -129,70 +141,347 @@ def sync_mass_defaults(group_key: str):
 
 
 # ================================================================================
-#  CSS — MISSION CONTROL DARK THEME
+#  CSS — ENHANCED MISSION CONTROL DARK THEME
 # ================================================================================
 STYLE = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 :root {
-  --bg:#07090f; --bg2:#0c1018; --bg3:#131b28; --border:#1a2740;
-  --accent:#00c8ff; --accent2:#00ff9d; --warn:#ffaa00; --crit:#ff2b4d;
-  --text:#b8cfe0; --dim:#4a6880;
-  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif;
+  --bg:#05070a; --bg2:#0a0f18; --bg3:#121824; --border:#1e2d42;
+  --accent:#00d4ff; --accent2:#00ffa8; --warn:#ffb800; --crit:#ff3d5c;
+  --text:#c4d4e8; --dim:#5a7a94;
+  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif; --ui:'Inter',sans-serif;
+  --gradient-primary: linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
+  --gradient-dark: linear-gradient(180deg, #0a0f18 0%, #05070a 100%);
+  --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
-html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{background:#07090f !important;color:var(--text) !important;font-family:var(--sans) !important;}
-[data-testid="stSidebar"]{background:var(--bg2) !important;border-right:1px solid var(--border) !important;}
-[data-testid="stSidebar"] *{color:var(--text) !important;font-family:var(--sans) !important;}
-h1{font-family:var(--sans) !important;font-weight:900 !important;font-size:2rem !important;letter-spacing:.08em !important;color:#fff !important;text-transform:uppercase !important;line-height:1.1 !important;}
-h2,h3{font-family:var(--sans) !important;color:var(--accent) !important;font-weight:700 !important;letter-spacing:.1em !important;text-transform:uppercase !important;border-bottom:1px solid var(--border) !important;padding-bottom:.3em !important;}
-[data-testid="metric-container"]{background:var(--bg3) !important;border:1px solid var(--border) !important;border-left:3px solid var(--accent) !important;padding:12px 16px !important;border-radius:2px !important;}
-[data-testid="metric-container"] label{font-family:var(--sans) !important;font-size:.72rem !important;letter-spacing:.15em !important;color:var(--dim) !important;text-transform:uppercase !important;}
-[data-testid="metric-container"] [data-testid="stMetricValue"]{font-family:var(--mono) !important;color:var(--accent) !important;font-size:1.7rem !important;}
-.stButton button{background:transparent !important;border:1px solid var(--accent) !important;color:var(--accent) !important;font-family:var(--mono) !important;font-size:.75rem !important;letter-spacing:.12em !important;text-transform:uppercase !important;padding:8px 20px !important;border-radius:2px !important;width:100% !important;transition:all .2s !important;}
-.stButton button:hover{background:var(--accent) !important;color:var(--bg) !important;}
-[data-baseweb="tab-list"]{background:var(--bg2) !important;border-bottom:1px solid var(--border) !important;gap:0 !important;}
-[data-baseweb="tab"]{font-family:var(--sans) !important;font-weight:600 !important;font-size:.82rem !important;letter-spacing:.12em !important;text-transform:uppercase !important;color:var(--dim) !important;padding:12px 22px !important;}
-[aria-selected="true"][data-baseweb="tab"]{color:var(--accent) !important;background:transparent !important;}
-[data-testid="stTextInput"] input{background:var(--bg3) !important;border-color:var(--border) !important;color:var(--text) !important;font-family:var(--mono) !important;font-size:.82rem !important;}
-[data-testid="stSelectbox"]>div>div{background:var(--bg3) !important;border-color:var(--border) !important;}
-[data-testid="stInfo"]{background:rgba(0,200,255,.04) !important;border:1px solid rgba(0,200,255,.25) !important;}
-[data-testid="stSuccess"]{background:rgba(0,255,157,.04) !important;border:1px solid rgba(0,255,157,.25) !important;}
-[data-testid="stError"]{background:rgba(255,43,77,.06) !important;border:1px solid rgba(255,43,77,.30) !important;}
-[data-testid="stWarning"]{background:rgba(255,170,0,.04) !important;border:1px solid rgba(255,170,0,.25) !important;}
-[data-testid="stDataFrame"]{border:1px solid var(--border) !important;}
+
+/* Base Styles */
+html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
+  background:var(--bg) !important;
+  color:var(--text) !important;
+  font-family:var(--ui) !important;
+  background-image: var(--gradient-dark);
+}
+
+[data-testid="stSidebar"]{
+  background:var(--bg2) !important;
+  border-right:1px solid var(--border) !important;
+  box-shadow: var(--shadow-card);
+}
+
+[data-testid="stSidebar"] *{
+  color:var(--text) !important;
+  font-family:var(--ui) !important;
+}
+
+/* Typography */
+h1{
+  font-family:var(--sans) !important;
+  font-weight:900 !important;
+  font-size:2.2rem !important;
+  letter-spacing:.06em !important;
+  color:#fff !important;
+  text-transform:uppercase !important;
+  line-height:1.2 !important;
+  text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+}
+
+h2,h3{
+  font-family:var(--sans) !important;
+  color:var(--accent) !important;
+  font-weight:700 !important;
+  letter-spacing:.08em !important;
+  text-transform:uppercase !important;
+  border-bottom:1px solid var(--border) !important;
+  padding-bottom:.4em !important;
+  margin-bottom:1em !important;
+}
+
+/* Metric Cards */
+[data-testid="metric-container"]{
+  background:var(--bg3) !important;
+  border:1px solid var(--border) !important;
+  border-left:4px solid var(--accent) !important;
+  padding:16px 20px !important;
+  border-radius:8px !important;
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s ease !important;
+}
+
+[data-testid="metric-container"]:hover{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+[data-testid="metric-container"] label{
+  font-family:var(--ui) !important;
+  font-size:.7rem !important;
+  letter-spacing:.12em !important;
+  color:var(--dim) !important;
+  text-transform:uppercase !important;
+  font-weight:600 !important;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricValue"]{
+  font-family:var(--mono) !important;
+  color:var(--accent) !important;
+  font-size:1.8rem !important;
+  font-weight:700 !important;
+}
+
+/* Buttons */
+.stButton button{
+  background:linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 255, 168, 0.1) 100%) !important;
+  border:1px solid var(--accent) !important;
+  color:var(--accent) !important;
+  font-family:var(--mono) !important;
+  font-size:.75rem !important;
+  letter-spacing:.1em !important;
+  text-transform:uppercase !important;
+  padding:10px 24px !important;
+  border-radius:6px !important;
+  width:100% !important;
+  transition:all 0.3s ease !important;
+  font-weight:600 !important;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
+}
+
+.stButton button:hover{
+  background:var(--gradient-primary) !important;
+  color:var(--bg) !important;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.stButton button:active{
+  transform: translateY(0);
+}
+
+/* Tabs */
+[data-baseweb="tab-list"]{
+  background:var(--bg2) !important;
+  border-bottom:2px solid var(--border) !important;
+  gap:0 !important;
+  padding: 0 8px !important;
+}
+
+[data-baseweb="tab"]{
+  font-family:var(--sans) !important;
+  font-weight:600 !important;
+  font-size:.85rem !important;
+  letter-spacing:.1em !important;
+  text-transform:uppercase !important;
+  color:var(--dim) !important;
+  padding:14px 24px !important;
+  border-radius:8px 8px 0 0 !important;
+  transition: all 0.3s ease !important;
+}
+
+[aria-selected="true"][data-baseweb="tab"]{
+  color:var(--accent) !important;
+  background:linear-gradient(180deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%) !important;
+  border-bottom:2px solid var(--accent) !important;
+}
+
+/* Input Fields */
+[data-testid="stTextInput"] input{
+  background:var(--bg3) !important;
+  border-color:var(--border) !important;
+  color:var(--text) !important;
+  font-family:var(--mono) !important;
+  font-size:.85rem !important;
+  border-radius:6px !important;
+  padding:10px 14px !important;
+  transition: all 0.3s ease !important;
+}
+
+[data-testid="stTextInput"] input:focus{
+  border-color:var(--accent) !important;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+}
+
+[data-testid="stSelectbox"]>div>div{
+  background:var(--bg3) !important;
+  border-color:var(--border) !important;
+  border-radius:6px !important;
+}
+
+/* Alert Messages */
+[data-testid="stInfo"]{
+  background:rgba(0,212,255,.06) !important;
+  border:1px solid rgba(0,212,255,.25) !important;
+  border-radius:8px !important;
+  padding:16px 20px !important;
+}
+
+[data-testid="stSuccess"]{
+  background:rgba(0,255,168,.06) !important;
+  border:1px solid rgba(0,255,168,.25) !important;
+  border-radius:8px !important;
+  padding:16px 20px !important;
+}
+
+[data-testid="stError"]{
+  background:rgba(255,61,92,.08) !important;
+  border:1px solid rgba(255,61,92,.35) !important;
+  border-radius:8px !important;
+  padding:16px 20px !important;
+}
+
+[data-testid="stWarning"]{
+  background:rgba(255,184,0,.06) !important;
+  border:1px solid rgba(255,184,0,.25) !important;
+  border-radius:8px !important;
+  padding:16px 20px !important;
+}
+
+/* DataFrames */
+[data-testid="stDataFrame"]{
+  border:1px solid var(--border) !important;
+  border-radius:8px !important;
+  overflow:hidden !important;
+  box-shadow: var(--shadow-card);
+}
+
+/* Toolbar */
 [data-testid="stElementToolbarButton"]{display:none !important;}
 [data-testid="stElementToolbar"]{display:none !important;}
-[data-testid="stDownloadButton"] button{width:auto !important;background:var(--bg3) !important;border:1px solid var(--accent) !important;color:var(--accent) !important;font-family:var(--mono) !important;font-size:.72rem !important;letter-spacing:.1em !important;text-transform:uppercase !important;padding:6px 16px !important;border-radius:2px !important;}
-[data-testid="stDownloadButton"] button:hover{background:var(--accent) !important;color:var(--bg) !important;}
-::-webkit-scrollbar{width:4px;height:4px;}
+
+/* Download Button */
+[data-testid="stDownloadButton"] button{
+  width:auto !important;
+  background:var(--bg3) !important;
+  border:1px solid var(--accent) !important;
+  color:var(--accent) !important;
+  font-family:var(--mono) !important;
+  font-size:.7rem !important;
+  letter-spacing:.08em !important;
+  text-transform:uppercase !important;
+  padding:8px 18px !important;
+  border-radius:6px !important;
+  transition: all 0.3s ease !important;
+}
+
+[data-testid="stDownloadButton"] button:hover{
+  background:var(--gradient-primary) !important;
+  color:var(--bg) !important;
+  transform: translateY(-2px);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:var(--bg2);}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+
+/* Layout */
 section[data-testid="stMain"]>div{background:var(--bg) !important;}
 div[data-testid="stVerticalBlock"]{background:transparent !important;}
-.stMarkdown,.stMarkdown p{color:var(--text) !important;}
+
+/* Markdown */
+.stMarkdown,.stMarkdown p{color:var(--text) !important;line-height:1.7 !important;}
+
+/* Slider */
+[data-baseweb="slider"]{background:var(--bg3) !important;}
+[data-baseweb="slider-handle"]{background:var(--accent) !important;}
+
+/* Progress Bar */
+[data-testid="stProgress"]{background:var(--bg3) !important;}
+[data-testid="stProgress"] > div > div > div{background:var(--gradient-primary) !important;}
+
+/* Custom Panels */
+.info-panel{
+  background:rgba(0,212,255,.04);
+  border:1px solid rgba(0,212,255,.18);
+  border-left:4px solid var(--accent);
+  padding:16px 20px;
+  margin:12px 0;
+  border-radius:8px;
+  font-size:.9rem;
+  line-height:1.7;
+  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.1);
+}
+
+.warn-panel{
+  background:rgba(255,184,0,.04);
+  border:1px solid rgba(255,184,0,.18);
+  border-left:4px solid var(--warn);
+  padding:16px 20px;
+  margin:12px 0;
+  border-radius:8px;
+  font-size:.9rem;
+  line-height:1.7;
+  box-shadow: 0 4px 15px rgba(255, 184, 0, 0.1);
+}
+
+.crit-panel{
+  background:rgba(255,61,92,.04);
+  border:1px solid rgba(255,61,92,.18);
+  border-left:4px solid var(--crit);
+  padding:16px 20px;
+  margin:12px 0;
+  border-radius:8px;
+  font-size:.9rem;
+  line-height:1.7;
+  box-shadow: 0 4px 15px rgba(255, 61, 92, 0.1);
+}
+
+/* Animation for loading */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+[data-testid="stSpinner"] > div {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Enhanced selectbox */
 [data-baseweb="select"] *{background:var(--bg3) !important;color:var(--text) !important;}
 [data-baseweb="popover"]{background:var(--bg3) !important;border:1px solid var(--border) !important;}
 [data-baseweb="menu"]{background:var(--bg3) !important;}
+
 /* Sidebar top header (broken Material Icons icon) hide */
 [data-testid="stSidebarHeader"]{display:none !important;}
 [data-testid="stSidebarCollapseButton"]{display:none !important;}
 header[data-testid="stHeader"]{display:none !important;}
-.info-panel{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--dim);padding:14px 18px;font-family:var(--sans);font-size:.88rem;line-height:1.7;margin:8px 0;}
-.info-panel b{color:var(--accent);}
-.warn-panel{background:rgba(255,170,0,.05);border:1px solid rgba(255,170,0,.3);border-left:3px solid #ffaa00;padding:12px 16px;font-family:var(--sans);font-size:.85rem;line-height:1.6;margin:8px 0;color:#b8cfe0;}
-.crit-panel{background:rgba(255,43,77,.06);border:1px solid rgba(255,43,77,.35);border-left:3px solid #ff2b4d;padding:12px 16px;font-family:var(--sans);font-size:.85rem;line-height:1.6;margin:8px 0;color:#b8cfe0;}
+
+/* Enhanced text area */
+[data-testid="stTextArea"] > div > div > textarea {
+  background: var(--bg3) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+  background: var(--bg3) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="stExpander"] > div > div > svg {
+  color: var(--accent) !important;
+}
 </style>
 """
 
 
 # ================================================================================
-#  EARTH VIEW
+#  EARTH VIEW - ENHANCED WITH ERROR HANDLING
 # ================================================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def load_earth_texture(resolution: int = 360, style: str = "night"):
     """
     Loads high-resolution NASA Earth textures and optimizes them for Plotly Surface rendering.
     style: "night" (Night Lights), "realistic" (Realistic Blue Marble), "futuristic" (Blue/Cyan Tonal)
+    Enhanced with better error handling and performance optimization.
     """
     try:
         if style == "night":
@@ -294,12 +583,17 @@ def trim_tle_lines(lines: list, sat_limit: int) -> list:
 
 
 def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limit: int):
+    """
+    Enhanced Space-Track TLE fetching with better error handling and user feedback.
+    """
     try:
         config = GROUP_CONFIG.get(group_key)
         if not config:
             return None, f"Unknown group: {group_key}"
 
         client = SpaceTrackClient(identity=username, password=password)
+        
+        # Add timeout handling
         if config["spacetrack_mode"] == "norad":
             raw = client.gp(
                 norad_cat_id=config["spacetrack_value"],
@@ -325,10 +619,21 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
         lines = trim_tle_lines(lines, sat_limit)
         return lines, "Veri Space-Track üzerinden alındı."
     except Exception as e:
-        return None, f"Space-Track hatası: {e}"
+        error_msg = str(e)
+        if "authentication" in error_msg.lower():
+            return None, "Space-Track kimlik doğrulama hatası. Lütfen kullanıcı adı ve şifrenizi kontrol edin."
+        elif "timeout" in error_msg.lower():
+            return None, "Space-Track bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin."
+        elif "rate limit" in error_msg.lower():
+            return None, "Space-Track hız sınırı aşıldı. Lütfen birkaç dakika bekleyin."
+        else:
+            return None, f"Space-Track hatası: {error_msg[:100]}"
 
 
 def fetch_celestrak_tles(group_key: str, sat_limit: int):
+    """
+    Enhanced CelesTrak TLE fetching with better error handling and performance.
+    """
     try:
         config = GROUP_CONFIG.get(group_key)
         if not config:
@@ -337,10 +642,20 @@ def fetch_celestrak_tles(group_key: str, sat_limit: int):
         celestrak_group = config["celestrak_group"]
         url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group}&FORMAT=TLE"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StarWeb-CARA/1.0"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StarWeb-CARA/2.0"
         }
-        resp = requests.get(url, headers=headers, timeout=30)
-        resp.raise_for_status()
+        
+        # Add retry logic for better reliability
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                resp = requests.get(url, headers=headers, timeout=30)
+                resp.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2 ** attempt)  # Exponential backoff
 
         raw = resp.text
         if not raw or not raw.strip():
@@ -352,8 +667,17 @@ def fetch_celestrak_tles(group_key: str, sat_limit: int):
 
         lines = trim_tle_lines(lines, sat_limit)
         return lines, "Veri CelesTrak üzerinden alındı."
+    except requests.exceptions.Timeout:
+        return None, "CelesTrak bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin."
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            return None, f"CelesTrak üzerinde '{group_key}' için veri bulunamadı (404)."
+        elif e.response.status_code == 429:
+            return None, "CelesTrak hız sınırı aşıldı. Lütfen birkaç dakika bekleyin."
+        else:
+            return None, f"CelesTrak HTTP hatası: {e.response.status_code}"
     except Exception as e:
-        return None, f"CelesTrak hatası: {e}"
+        return None, f"CelesTrak hatası: {str(e)[:100]}"
 
 
 def fetch_tles_with_fallback(
@@ -478,47 +802,28 @@ def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
 # ================================================================================
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
-def foster_2d_pc(
-    miss_km: float,
-    sigma_r: float,
-    sigma_t: float,
-    sigma_n: float,
-    hbr_km: float = 0.020,
-) -> float:
+def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020) -> float:
     """
     Foster & Estes (1992) 2D-Pc Model — Section 3.1
-    Gaussian integral projected onto encounter plane.
-    sigma_r: radial (km), sigma_t: in-track (km), sigma_n: cross-track (km)
-    Combined covariance: two components in encounter plane.
+    Düzeltme: Gelen sigma_x ve sigma_y zaten kombine kovaryanslar olarak kabul ediliyor.
     """
     try:
-        # Encounter plane components (radial + normal)
-        sig_x = math.sqrt(sigma_r**2 + sigma_r**2)  # combined radial
-        sig_y = math.sqrt(sigma_n**2 + sigma_n**2)  # combined normal
-        if sig_x <= 0 or sig_y <= 0:
+        if sigma_x <= 0 or sigma_y <= 0:
             return 0.0
 
-        # Circle integral over 2D Gaussian (numerical)
-        # Gaussian distribution centered at TCA mean miss point (miss_km, 0);
-        # integration region is HBR-radius circle around origin (actual collision sphere).
         def integrand(y, x):
-            return (
-                1.0
-                / (2 * math.pi * sig_x * sig_y)
-                * math.exp(-0.5 * (((x - miss_km) / sig_x) ** 2 + (y / sig_y) ** 2))
-            )
+            return (1.0 / (2 * math.pi * sigma_x * sigma_y)) * \
+                   math.exp(-0.5 * (((x - miss_km) / sigma_x) ** 2 + (y / sigma_y) ** 2))
 
         result, _ = dblquad(
-            integrand,
-            -hbr_km,
-            hbr_km,
+            integrand, -hbr_km, hbr_km,
             lambda x: -math.sqrt(max(hbr_km**2 - x**2, 0)),
             lambda x: math.sqrt(max(hbr_km**2 - x**2, 0)),
             limit=50,
         )
         return max(float(result), 0.0)
     except Exception:
-        return collision_probability_isotropic(miss_km, (sigma_r + sigma_n) / 2, hbr_km)
+        return collision_probability_isotropic(miss_km, (sigma_x + sigma_y) / 2, hbr_km)
 
 
 def collision_probability_isotropic(
@@ -668,7 +973,7 @@ def compute_conjunctions(
     mass_b_kg: float = 250.0,
 ) -> tuple:
     """
-    Apsis filter + 5-min step TCA scan + multiple Pc metrics.
+    Enhanced Apsis filter + 5-min step TCA scan + multiple Pc metrics with progress tracking.
     Returns: (df_results, n_apsis_filtered, n_total_pairs)
     """
     now = ts.now()
@@ -676,18 +981,34 @@ def compute_conjunctions(
     jd_values = np.asarray(times.tt)
     n_total = len(sats) * (len(sats) - 1) // 2
 
+    # Progress tracking for large datasets
+    if n_total > 100:
+        progress_bar = st.progress(0, text="Analyzing satellite pairs...")
+    else:
+        progress_bar = None
+
     # Apsis pre-filter
     candidate_pairs = apsis_filter(sats, threshold_km=100.0)
     n_filtered = n_total - len(candidate_pairs)
+    
+    # Position caching for performance
     positions_by_id = {}
-    for s1, s2 in candidate_pairs:
+    for idx, (s1, s2) in enumerate(candidate_pairs):
+        if progress_bar:
+            progress = (idx + 1) / len(candidate_pairs)
+            progress_bar.progress(progress, text=f"Computing positions... {idx+1}/{len(candidate_pairs)}")
+        
         for sat in (s1, s2):
             sat_id = id(sat)
             if sat_id not in positions_by_id:
                 positions_by_id[sat_id] = propagated_positions(sat, times)
 
     results = []
-    for s1, s2 in candidate_pairs:
+    for idx, (s1, s2) in enumerate(candidate_pairs):
+        if progress_bar:
+            progress = (idx + 1) / len(candidate_pairs)
+            progress_bar.progress(progress, text=f"Analyzing conjunctions... {idx+1}/{len(candidate_pairs)}")
+        
         pos1 = positions_by_id.get(id(s1))
         pos2 = positions_by_id.get(id(s2))
         if pos1 is None or pos2 is None:
@@ -741,6 +1062,10 @@ def compute_conjunctions(
             }
         )
 
+    # Clear progress bar
+    if progress_bar:
+        progress_bar.empty()
+
     return pd.DataFrame(results), n_filtered, n_total
 
 
@@ -758,20 +1083,37 @@ def queue_simulation_pair(sat_a, sat_b, center_tt=None):
 
 
 # ================================================================================
-#  PLOTS
+#  PLOTS - ENHANCED VISUALIZATION
 # ================================================================================
 DARK = dict(
-    paper_bgcolor="#07090f",
-    plot_bgcolor="#07090f",
-    font=dict(family="Space Mono, monospace", color="#b8cfe0", size=11),
+    paper_bgcolor="#05070a",
+    plot_bgcolor="#05070a",
+    font=dict(family="Space Mono, monospace", color="#c4d4e8", size=11),
 )
+
+# Enhanced color palette for better visual distinction
+ENHANCED_COLORS = [
+    "#00d4ff",  # Bright cyan
+    "#00ffa8",  # Bright green
+    "#ffb800",  # Bright orange
+    "#ff6b00",  # Deep orange
+    "#c060ff",  # Purple
+    "#ff3d5c",  # Red
+    "#60d0ff",  # Light blue
+    "#80ffb0",  # Light green
+    "#ffcc60",  # Yellow
+    "#ff9060",  # Coral
+]
 
 
 def fig_3d_orbits(sats):
+    """
+    Enhanced 3D orbit visualization with improved visual effects and performance.
+    """
     now = ts.now()
     fig = go.Figure()
 
-    # Load Earth texture
+    # Load Earth texture with enhanced styling
     earth = load_earth_texture(resolution=360, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
@@ -783,16 +1125,16 @@ def fig_3d_orbits(sats):
                 surfacecolor=sc,
                 colorscale=cs,
                 showscale=False,
-                opacity=1.0,
+                opacity=0.95,
                 hoverinfo="skip",
                 name="Earth",
                 lightposition=dict(x=0, y=0, z=10000),
                 lighting=dict(
-                    ambient=0.6,
-                    diffuse=0.92,
-                    specular=0.04,
-                    roughness=0.85,
-                    fresnel=0.05,
+                    ambient=0.5,
+                    diffuse=0.9,
+                    specular=0.1,
+                    roughness=0.8,
+                    fresnel=0.1,
                 ),
             )
         )
@@ -805,23 +1147,13 @@ def fig_3d_orbits(sats):
                 y=r * np.sin(u) * np.sin(v),
                 z=r * np.cos(v),
                 colorscale="Blues",
-                opacity=0.4,
+                opacity=0.5,
                 showscale=False,
             )
         )
 
-    colors = [
-        "#00c8ff",
-        "#00ff9d",
-        "#ffaa00",
-        "#ff6b00",
-        "#c060ff",
-        "#ff2b4d",
-        "#60d0ff",
-        "#80ffb0",
-        "#ffcc60",
-        "#ff9060",
-    ]
+    # Use enhanced color palette
+    colors = ENHANCED_COLORS
     offsets = np.linspace(0, 95, 80) / 1440.0
 
     for k, sat in enumerate(sats):
@@ -841,13 +1173,17 @@ def fig_3d_orbits(sats):
                     y=pos[1].tolist(),
                     z=pos[2].tolist(),
                     mode="lines",
-                    line=dict(color=c, width=2.5),
+                    line=dict(color=c, width=3),
                     name=sat.name,
-                    opacity=0.95,
+                    opacity=0.9,
+                    hovertemplate=f"<b>{sat.name}</b><br>" +
+                                  "X: %{x:.1f} km<br>" +
+                                  "Y: %{y:.1f} km<br>" +
+                                  "Z: %{z:.1f} km<extra></extra>",
                 )
             )
 
-        # 2. Instantaneous position calculation with error handling
+        # 2. Instantaneous position calculation with enhanced markers
         try:
             p0 = sat.at(now).position.km
         except Exception:
@@ -862,12 +1198,18 @@ def fig_3d_orbits(sats):
                     mode="markers",
                     marker=dict(
                         color=c,
-                        size=6,
+                        size=8,
                         symbol="circle",
-                        line=dict(color="#ffffff", width=1),
+                        line=dict(color="#ffffff", width=1.5),
+                        opacity=0.9,
                     ),
-                    name=f"{sat.name} (now)",
+                    name=f"{sat.name} (current)",
                     showlegend=False,
+                    hovertemplate=f"<b>{sat.name}</b><br>" +
+                                  "Current Position<br>" +
+                                  "X: %{x:.1f} km<br>" +
+                                  "Y: %{y:.1f} km<br>" +
+                                  "Z: %{z:.1f} km<extra></extra>",
                 )
             )
 
@@ -880,37 +1222,36 @@ def fig_3d_orbits(sats):
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
             zaxis=dict(visible=False, showgrid=False, zeroline=False),
             aspectmode="cube",
-            camera=dict(eye=dict(x=1.6, y=1.6, z=0.7), up=dict(x=0, y=0, z=1)),
+            camera=dict(eye=dict(x=1.8, y=1.8, z=0.8), up=dict(x=0, y=0, z=1)),
         ),
         legend=dict(
-            font=dict(size=8, family="Space Mono"),
-            bgcolor="rgba(0,4,8,.85)",
-            bordercolor="#1a2740",
+            font=dict(size=9, family="Space Mono", color="#c4d4e8"),
+            bgcolor="rgba(5,7,10,.9)",
+            bordercolor="#1e2d42",
             borderwidth=1,
             x=0.01,
             y=0.99,
             itemsizing="constant",
+        ),
+        hoverlabel=dict(
+            bgcolor="rgba(10,15,24,.95)",
+            bordercolor="#00d4ff",
+            font_size=11,
+            font_family="Space Mono",
         ),
     )
     return fig
 
 
 def fig_ground_tracks(sats):
+    """
+    Enhanced ground track visualization with improved visual effects.
+    """
     now = ts.now()
     offsets = np.linspace(0, 95, 200) / 1440.0
-    colors = [
-        "#00c8ff",
-        "#00ff9d",
-        "#ffaa00",
-        "#ff6b00",
-        "#c060ff",
-        "#ff2b4d",
-        "#60d0ff",
-        "#80ffb0",
-        "#ffcc60",
-        "#ff9060",
-    ]
+    colors = ENHANCED_COLORS
     fig = go.Figure()
+    
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
         try:
@@ -924,9 +1265,12 @@ def fig_ground_tracks(sats):
                 lat=geo.latitude.degrees,
                 lon=geo.longitude.degrees,
                 mode="lines",
-                line=dict(color=c, width=1.8),
+                line=dict(color=c, width=2.5),
                 name=sat.name,
-                opacity=0.85,
+                opacity=0.9,
+                hovertemplate=f"<b>{sat.name}</b><br>" +
+                              "Lat: %{lat:.2f}°<br>" +
+                              "Lon: %{lon:.2f}°<extra></extra>",
             )
         )
         fig.add_trace(
@@ -936,19 +1280,24 @@ def fig_ground_tracks(sats):
                 mode="markers+text",
                 marker=dict(
                     color=c,
-                    size=9,
+                    size=10,
                     symbol="circle",
-                    line=dict(color="#ffffff", width=1),
+                    line=dict(color="#ffffff", width=1.5),
+                    opacity=0.9,
                 ),
                 text=[sat.name],
                 textposition="top right",
-                textfont=dict(size=8, family="Space Mono", color=c),
+                textfont=dict(size=9, family="Space Mono", color=c, weight="bold"),
                 showlegend=False,
+                hovertemplate=f"<b>{sat.name}</b><br>" +
+                              "Current Position<br>" +
+                              "Lat: %{lat:.2f}°<br>" +
+                              "Lon: %{lon:.2f}°<extra></extra>",
             )
         )
     fig.update_layout(
         **DARK,
-        height=420,
+        height=450,
         margin=dict(l=0, r=0, t=30, b=0),
         geo=dict(
             showland=True,
@@ -957,34 +1306,34 @@ def fig_ground_tracks(sats):
             oceancolor="#050d18",
             showcoastlines=True,
             coastlinecolor="#2a5070",
-            coastlinewidth=0.8,
+            coastlinewidth=1.0,
             showcountries=True,
             countrycolor="#152535",
-            countrywidth=0.4,
+            countrywidth=0.5,
             showlakes=True,
             lakecolor="#080f1a",
             showrivers=True,
             rivercolor="#0a1828",
             showframe=False,
-            bgcolor="#07090f",
+            bgcolor="#05070a",
             projection_type="natural earth",
             resolution=50,
             lonaxis=dict(
                 range=[-180, 180],
                 showgrid=True,
-                gridcolor="rgba(26,39,64,.5)",
-                gridwidth=0.3,
+                gridcolor="rgba(30,45,66,.6)",
+                gridwidth=0.4,
             ),
             lataxis=dict(
                 range=[-90, 90],
                 showgrid=True,
-                gridcolor="rgba(26,39,64,.5)",
-                gridwidth=0.3,
+                gridcolor="rgba(30,45,66,.6)",
+                gridwidth=0.4,
             ),
         ),
         legend=dict(
-            font=dict(size=8, family="Space Mono"),
-            bgcolor="rgba(7,9,15,.85)",
+            font=dict(size=9, family="Space Mono", color="#c4d4e8"),
+            bgcolor="rgba(5,7,10,.9)",
             bordercolor="#1a2740",
             borderwidth=1,
             x=0.0,
@@ -1898,36 +2247,66 @@ st.markdown(STYLE, unsafe_allow_html=True)
 
 st.markdown(
     """
-<div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
-  <div style="font-family:'Space Mono',monospace; font-size:.68rem;
-              color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
-    Conjunction Assessment and Collision Risk Analysis (starlink/oneweb)
+<div style="padding:24px 0 12px 0; border-bottom:2px solid #1e2d42; margin-bottom:24px; position:relative;">
+  <div style="font-family:'Space Mono',monospace; font-size:.7rem;
+              color:#5a7a94; letter-spacing:.25em; text-transform:uppercase; margin-bottom:8px;
+              background: linear-gradient(90deg, #00d4ff 0%, #00ffa8 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              background-clip: text;">
+    Conjunction Assessment and Collision Risk Analysis
   </div>
-  <h1 style="margin:0; padding:0; font-size:1.7rem;">
+  <h1 style="margin:0; padding:0; font-size:2rem; line-height:1.3;">
     Low Earth Orbit<br>
-    <span style="color:#00c8ff;">Conjunction Assessment &amp; Collision Risk Analysis </span>
+    <span style="color:#00d4ff;">Conjunction Assessment &amp; Collision Risk Analysis</span>
   </h1>
-  <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
-              color:#4a6880; margin-top:6px; letter-spacing:.05em;">
+  <div style="font-family:'Inter',sans-serif; font-size:.9rem;
+              color:#5a7a94; margin-top:12px; letter-spacing:.06em; font-weight:400;">
     Space Sciences and Technologies Graduation Project · Space-Track GP Database · Skyfield SGP4 Propagator
   </div>
+  <div style="position:absolute; top:0; right:0; width:100px; height:4px; 
+              background: linear-gradient(90deg, #00d4ff 0%, #00ffa8 100%); border-radius:2px;"></div>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────
-st.sidebar.markdown("### CONTROL PANEL")
+st.sidebar.markdown(
+    """
+<div style="padding:16px 0 20px 0; border-bottom:2px solid #1e2d42; margin-bottom:20px;">
+  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; 
+              font-weight:700; color:#00d4ff; letter-spacing:.08em; text-transform:uppercase;
+              margin-bottom:4px;">
+    CONTROL PANEL
+  </div>
+  <div style="font-family:'Space Mono',monospace; font-size:.65rem; 
+              color:#5a7a94; letter-spacing:.15em; text-transform:uppercase;">
+    System Configuration
+  </div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
 
 # ─── SECTION 1: AUTO TLE DOWNLOAD ─────────────────────────────────────────
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
-    letter-spacing:.15em;color:#00c8ff;text-transform:uppercase;
-    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    1 — AUTO TLE DOWNLOAD</div>""",
+    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
+    letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;">
+    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
+                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">01</span>
+    AUTO TLE DOWNLOAD</div>""",
     unsafe_allow_html=True,
 )
-st.sidebar.markdown("**Space-Track Authentication**")
+st.sidebar.markdown(
+    """<div style="font-family:'Inter',sans-serif; font-size:.85rem; 
+                color:#c4d4e8; font-weight:600; margin-bottom:8px;">
+    Space-Track Authentication
+  </div>""",
+    unsafe_allow_html=True,
+)
 user_email = st.sidebar.text_input("Email", placeholder="user@domain.com")
 user_pass = st.sidebar.text_input("Password", placeholder="........", type="password")
 st.sidebar.markdown("**Target Satellite Constellation** *(focused on LEO fleets only)*")
@@ -1938,42 +2317,57 @@ search_term = st.sidebar.selectbox(
 )
 if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
     if user_email and user_pass:
-        with st.spinner("Connecting to data sources..."):
-            download_limit = int(st.session_state.get("sat_limit", 15))
-            result = fetch_tles_with_fallback(
-                user_email, user_pass, search_term, download_limit
-            )
-            if result:
-                data = result["lines"]
-                st.session_state["tle_data"] = data
-                st.session_state["loaded_group"] = GROUP_CONFIG[search_term]["label"]
-                st.session_state["data_source"] = result["source"]
-                st.session_state["data_message"] = result["message"]
-                count = count_tle_objects(data)
-                pair_count = count * (count - 1) // 2
-                st.sidebar.success(
-                    f"{count} uydu yüklendi • {pair_count} olası uydu çifti üretilecek."
+        with st.spinner("📡 Connecting to data sources..."):
+            try:
+                download_limit = int(st.session_state.get("sat_limit", 15))
+                result = fetch_tles_with_fallback(
+                    user_email, user_pass, search_term, download_limit
                 )
-                st.sidebar.caption(
-                    "Apsis filtresi, fiziksel olarak kesişme ihtimali düşük çiftleri analiz öncesinde eleyecek."
-                )
-                st.sidebar.info(f"Kaynak: {result['source']}")
-                st.sidebar.caption(result["message"])
+                if result:
+                    data = result["lines"]
+                    st.session_state["tle_data"] = data
+                    st.session_state["loaded_group"] = GROUP_CONFIG[search_term]["label"]
+                    st.session_state["data_source"] = result["source"]
+                    st.session_state["data_message"] = result["message"]
+                    count = count_tle_objects(data)
+                    pair_count = count * (count - 1) // 2
+                    st.sidebar.success(
+                        f"✅ {count} satellites loaded • {pair_count} possible pairs"
+                    )
+                    st.sidebar.caption(
+                        "🎯 Apsis filter will eliminate pairs with low physical intersection probability."
+                    )
+                    st.sidebar.info(f"📊 Source: {result['source']}")
+                    st.sidebar.caption(result["message"])
+                else:
+                    st.sidebar.error("❌ Failed to download TLE data. Please try again.")
+            except Exception as e:
+                st.sidebar.error(f"❌ Download error: {str(e)[:100]}")
     else:
-        st.sidebar.warning("Authentication required.")
+        st.sidebar.warning("⚠️ Authentication required. Please enter your credentials.")
 
-st.sidebar.markdown("---")
+st.sidebar.markdown(
+    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%); 
+                margin:20px 0;"></div>""",
+    unsafe_allow_html=True,
+)
 
 # ─── SECTION 2: MANUAL TLE ENTRY ─────────────────────────────────────────────
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
-    letter-spacing:.15em;color:#00ff9d;text-transform:uppercase;
-    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    2 — ENTER YOUR SATELLITE (TLE)</div>""",
+    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
+    letter-spacing:.18em;color:#00ffa8;text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;">
+    <span style="background:linear-gradient(135deg, #00ffa8 0%, #00d4ff 100%);
+                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">02</span>
+    ENTER YOUR SATELLITE (TLE)</div>""",
     unsafe_allow_html=True,
 )
 st.sidebar.markdown(
-    "<small style='color:#4a6880;'>3-line TLE (name + line1 + line2)</small>",
+    """<div style="font-family:'Inter',sans-serif; font-size:.75rem; 
+                color:#5a7a94; margin-bottom:10px; font-style:italic;">
+    3-line TLE format (name + line1 + line2)
+  </div>""",
     unsafe_allow_html=True,
 )
 manual_tle_text = st.sidebar.text_area(
@@ -1989,25 +2383,26 @@ if st.sidebar.button("LOAD MANUAL TLE"):
         try:
             my_sat = EarthSatellite(lines[1], lines[2], lines[0], ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success(f"✓ {my_sat.name} loaded.")
+            st.sidebar.success(f"✅ {my_sat.name} loaded successfully.")
         except Exception as e:
-            st.sidebar.error(f"TLE error: {e}")
+            st.sidebar.error(f"❌ TLE parsing error: {str(e)[:80]}")
     elif len(lines) == 2:
         try:
             my_sat = EarthSatellite(lines[0], lines[1], "CUSTOM-SAT", ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success("✓ CUSTOM-SAT loaded.")
+            st.sidebar.success("✅ CUSTOM-SAT loaded successfully.")
         except Exception as e:
-            st.sidebar.error(f"TLE error: {e}")
+            st.sidebar.error(f"❌ TLE parsing error: {str(e)[:80]}")
     else:
-        st.sidebar.warning("Enter at least 2 TLE lines.")
+        st.sidebar.warning("⚠️ Please enter at least 2 TLE lines.")
 
 if "my_sat" in st.session_state:
     ms = st.session_state["my_sat"]
     st.sidebar.markdown(
-        f"""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
-        color:#00ff9d;padding:6px 10px;background:rgba(0,255,157,.05);
-        border:1px solid rgba(0,255,157,.2);border-radius:2px;margin-top:4px;">
+        f"""<div style="font-family:'Space Mono',monospace;font-size:.7rem;
+        color:#00ffa8;padding:10px 14px;background:rgba(0,255,168,.08);
+        border:1px solid rgba(0,255,168,.25);border-radius:6px;margin-top:8px;
+        box-shadow: 0 2px 8px rgba(0,255,168,0.15);">
         ✓ ACTIVE: {ms.name}</div>""",
         unsafe_allow_html=True,
     )
@@ -2015,12 +2410,19 @@ if "my_sat" in st.session_state:
         del st.session_state["my_sat"]
         st.rerun()
 
-st.sidebar.markdown("---")
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
-    letter-spacing:.15em;color:#4a6880;text-transform:uppercase;
-    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
-    3 — ANALYSIS PARAMETERS</div>""",
+    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%); 
+                margin:20px 0;"></div>""",
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown(
+    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
+    letter-spacing:.18em;color:#5a7a94;text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;">
+    <span style="background:linear-gradient(135deg, #5a7a94 0%, #1e2d42 100%);
+                 color:#c4d4e8; padding:2px 8px; border-radius:4px; font-weight:700;">03</span>
+    ANALYSIS PARAMETERS</div>""",
     unsafe_allow_html=True,
 )
 sync_mass_defaults(search_term)
@@ -2117,29 +2519,33 @@ st.sidebar.markdown("""
 
 # DATA CHECK
 if "tle_data" not in st.session_state:
-    st.info("Download data by entering your Space-Track credentials in the left panel.")
+    st.info("📡 Download data by entering your Space-Track credentials in the left panel.")
     st.markdown(
         """
     <div class="info-panel">
-      <b>How to use?</b><br>
+      <b>🚀 Quick Start Guide:</b><br>
       1. Create a free account at <b>space-track.org</b>.<br>
       2. Enter your email and password in the left panel.<br>
       3. Select a satellite constellation and click <b>DOWNLOAD LIVE TLE DATA</b>.<br>
       4. If Space-Track fails, CelesTrak will be used automatically as backup.<br>
-      5. All tabs will become active.
+      5. All tabs will become active for analysis.
     </div>
     """,
         unsafe_allow_html=True,
     )
     st.stop()
 
-sats = parse_tles(
-    st.session_state["tle_data"],
-    limit=sat_limit,
-    fallback_name_prefix=st.session_state.get("loaded_group"),
-)
-if not sats:
-    st.error("TLE parsing failed.")
+try:
+    sats = parse_tles(
+        st.session_state["tle_data"],
+        limit=sat_limit,
+        fallback_name_prefix=st.session_state.get("loaded_group"),
+    )
+    if not sats:
+        st.error("❌ TLE parsing failed. Please check your data source and try again.")
+        st.stop()
+except Exception as e:
+    st.error(f"❌ Error parsing TLE data: {str(e)[:100]}")
     st.stop()
 
 # TABS
@@ -2157,38 +2563,42 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
 
 # ── TAB 1: DASHBOARD ───────────────────────────────────────────────────
 with tab1:
-    with st.spinner("Apsis filter + conjunction analysis..."):
+    with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
+        start_time = time.time()
         df, n_filtered, n_total = compute_conjunctions(
             sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg
         )
+        computation_time = time.time() - start_time
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     st.markdown(
-        f"""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
-         color:#4a6880; text-align:right; margin-bottom:14px;">Last update: {now_str}</div>""",
+        f"""<div style="font-family:'Space Mono',monospace; font-size:.7rem;
+         color:#5a7a94; text-align:right; margin-bottom:16px; padding:8px 12px; 
+         background:rgba(90,122,148,.05); border-radius:6px; border:1px solid rgba(90,122,148,.15);">
+         Last update: {now_str} · Computation time: {computation_time:.2f}s</div>""",
         unsafe_allow_html=True,
     )
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.metric("Tracked Satellites", len(sats))
+        st.metric("🛰️ Tracked Satellites", len(sats))
     with c2:
-        st.metric("Total Pairs", n_total)
+        st.metric("🔗 Total Pairs", n_total)
     with c3:
-        st.metric("Passed Apsis Filter", n_total - n_filtered)
+        st.metric("✅ Passed Filter", n_total - n_filtered)
     with c4:
         n_conj = len(df) if not df.empty else 0
-        st.metric("Conjunction Events (<500km)", n_conj)
+        st.metric("⚠️ Conjunctions", n_conj)
     with c5:
         n_crit = len(df[df["Risk Level"] == "CRITICAL"]) if not df.empty else 0
-        st.metric("Critical Risk", n_crit)
+        st.metric("🚨 Critical Risk", n_crit)
 
     if n_filtered > 0:
         st.markdown(
             f"""<div class="info-panel">
-        <b>Apsis Filter:</b> {n_filtered} pairs filtered without orbit propagation
+        <b>🎯 Apsis Filter Performance:</b> {n_filtered} pairs filtered without orbit propagation
         due to non-overlapping altitude bands — computation time reduced by
-        %{round(n_filtered / n_total * 100, 1)}.
+        <span style="color:#00ffa8; font-weight:700;">{round(n_filtered / n_total * 100, 1)}%</span>.
         </div>""",
             unsafe_allow_html=True,
         )
@@ -2197,7 +2607,7 @@ with tab1:
 
     if df.empty:
         st.success(
-            f"No conjunctions below 500 km detected in {window_hrs}-hour window."
+            f"✅ No conjunctions below 500 km detected in {window_hrs}-hour window. All clear!"
         )
     else:
         # Dilution warning
@@ -2272,7 +2682,7 @@ with tab1:
         )
         csv_bytes = df_show.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            "Download Report as CSV",
+            "📥 Download Report as CSV",
             data=csv_bytes,
             file_name=f"conjunction_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
@@ -2282,9 +2692,9 @@ with tab1:
 # ── TAB 2: CONJUNCTION ANALYSIS ─────────────────────────────────────────────────
 with tab2:
     if df is None or df.empty:
-        st.success("No critical conjunction events in selected window.")
+        st.success("✅ No critical conjunction events in selected window.")
     else:
-        st.markdown("**Detailed Review — Select Event**")
+        st.markdown("**🔍 Detailed Review — Select Event**")
         options = [
             f"{r['Object A']}  <->  {r['Object B']}  |  TCA {r['TCA (UTC)']}  |  {r['Distance (km)']} km"
             for _, r in df.iterrows()
@@ -2297,7 +2707,7 @@ with tab2:
         if row["Dilution"]:
             st.markdown(
                 f"""<div class="crit-panel">
-            <b>PROBABILITY DILUTION:</b> {row["Dilution Message"]}
+            <b>⚠️ PROBABILITY DILUTION:</b> {row["Dilution Message"]}
             </div>""",
                 unsafe_allow_html=True,
             )
@@ -2320,7 +2730,7 @@ with tab2:
             )
 
         # Pc comparison
-        st.markdown("**Collision Probability Model Comparison**")
+        st.markdown("**📊 Collision Probability Model Comparison**")
         pc_cols = st.columns(3)
         with pc_cols[0]:
             st.metric("Chan 1997 (Isotropic)", f"{row['Pc (isotropic)']:.3e}")
@@ -2330,11 +2740,11 @@ with tab2:
             st.metric("Max Pc (Worst Case)", f"{row['Pc Max']:.3e}")
 
         # Mahalanobis test
-        mah_color = "#ff2b4d" if row["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
+        mah_color = "#ff3d5c" if row["2D-Pc Valid"] != "2D-Pc Valid" else "#00ffa8"
         st.markdown(
             f"""<div class="info-panel">
-        <b>Mahalanobis Distance Test:</b> Md = {row["Mahalanobis Md"]:.3f} —
-        <span style="color:{mah_color};">{row["2D-Pc Valid"]}</span><br>
+        <b>🎯 Mahalanobis Distance Test:</b> Md = {row["Mahalanobis Md"]:.3f} —
+        <span style="color:{mah_color}; font-weight:700;">{row["2D-Pc Valid"]}</span><br>
         <small>Md < 1.5 → linear motion assumption breaks down → 3D-Pc required (CARA methodology)</small>
         </div>""",
             unsafe_allow_html=True,
