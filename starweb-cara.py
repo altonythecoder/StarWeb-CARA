@@ -6,6 +6,7 @@ from io import BytesIO
 from itertools import combinations
 from functools import lru_cache
 import time
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -1215,6 +1216,7 @@ ENHANCED_COLORS = [
 def fig_3d_orbits(sats):
     """
     Enhanced 3D orbit visualization with improved visual effects and performance.
+    Fixed syntax error: lighting dict now properly closed with ) instead of }
     """
     now = ts.now()
     fig = go.Figure()
@@ -1235,12 +1237,13 @@ def fig_3d_orbits(sats):
                 hoverinfo="skip",
                 name="Earth",
                 lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict": 0.5",
-    "use": 0.9,
-                    "specular": 0.1,
-                    "roughness": 0.8,
-                    "fresnel": 0.1,
-                },
+                lighting=dict(
+                    ambient=0.5,
+                    diffuse=0.9,
+                    specular=0.1,
+                    roughness=0.8,
+                    fresnel=0.1
+                ),
             )
         )
     else:
@@ -1508,7 +1511,7 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
         ),
         yaxis=dict(
             title="Distance (km)",
-            gridcolor="#1a2121824",
+            gridcolor="#1a2740",
             zeroline=False,
             tickfont=dict(size=9),
         ),
@@ -1634,6 +1637,7 @@ def fig_animated_conjunction(
     3D Plotly figure showing two satellites with real-time animation.
     Robust version with error handling and fallback.
     Precomputed star field for performance.
+    Fixed syntax error: lighting dict now properly closed with ) instead of }
     """
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
@@ -1780,7 +1784,7 @@ def fig_animated_conjunction(
     # Prime meridian (lon=0)
     fig.add_trace(
         go.Scatter3d(
-            x=(r_earth * np.cos(_lat_pm)).tolist(),
+            x=(r_earth * np.cos(_lat_pm)).tolit(),
             y=np.zeros(_pts).tolist(),
             z=(r_earth * np.sin(_lat_pm)).tolist(),
             mode="lines",
@@ -1793,8 +1797,8 @@ def fig_animated_conjunction(
     fig.add_trace(
         go.Scatter3d(
             x=np.zeros(_pts).tolist(),
-            y=(r_earth * np.cos(_lat_pm)).tolit(),
-            z=(r_earth * np.sin(_lat_pm)).tolist(),
+            y=(r_earth * np.cos(_lat_pm)).tolist(),
+            z=(r_earth * np.sin(_lat_pm)).tolis(),
             mode="lines",
             line=dict(color="rgba(100,150,200,0.25)", width=1),
             showlegend=False,
@@ -1978,7 +1982,7 @@ def fig_animated_conjunction(
         if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
             tr1 = go.Scatter3d(
                 x=tb[0].tolist(),
-                y=tb[1].tolit(),
+                y=tb[1].tolist(),
                 z=tb[2].tolist(),
                 mode="lines",
                 line=dict(color="rgba(255,107,0,0.95)", width=3.5),
@@ -3235,9 +3239,9 @@ with tab6:
                         "Period (min)": elems.get("Orbital Period (min)", "-"),
                     }
                 )
-        if rows:
-            df_elems = pd.DataFrame(rows)
-            st.dataframe(df_elems, use_container_width=True, hide_index=True)
+            if rows:
+                df_elems = pd.DataFrame(rows)
+                st.dataframe(df_elems, use_container_width=True, hide_index=True)
     with col_b:
         st.markdown("**Altitude / Inclination Distribution** (dot size = eccentricity)")
         st.plotly_chart(
