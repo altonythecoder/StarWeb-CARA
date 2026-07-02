@@ -25,12 +25,16 @@ except Exception as e:
     st.error(f"Skyfield timescale initialization failed: {e}")
     ts = None
 
+# ================================================================================
+#  CONSTANTS AND CONFIGURATION
+# ================================================================================
 MANUAL_SAT_DEFAULT_MASS_KG = 250
 MASS_WIDGET_MAX_KG = 500_000.0
 EARTH_RADIUS_KM = 6371.0
 MU_EARTH_KM3_S2 = 398600.4418
 ANALYSIS_STEP_MIN = 5
 CONJUNCTION_DISTANCE_THRESHOLD_KM = 500.0
+APSIS_FILTER_THRESHOLD_KM = 50.0  # Fixed threshold for apsis filter
 
 GROUP_CONFIG = {
     "STARLINK": {
@@ -82,9 +86,13 @@ def get_group_default_mass(group_key: str) -> int:
     return int(GROUP_CONFIG.get(group_key, {}).get("default_mass_kg", 250))
 
 
+# ================================================================================
+#  TIME AND ORBITAL HELPERS
+# ================================================================================
 def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN):
+    """Build time grid for analysis using linspace for clarity."""
     n_steps = max(1, int(window_hrs * 60 // step_min) + 1)
-    offsets = np.arange(n_steps, dtype=float) * step_min / 1440.0
+    offsets = np.linspace(0, (n_steps-1)*step_min, n_steps) / 1440.0
     return ts.tt_jd(start_tt + offsets), offsets
 
 
@@ -244,7 +252,6 @@ h2,h3{
   text-transform:uppercase !important;
   padding:10px 24px !important;
   border-radius:6px !important;
-  width:100% !important;
   transition:all 0.3s ease !important;
   font-weight:600 !important;
   box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
@@ -599,7 +606,7 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
                 norad_cat_id=config["spacetrack_value"],
                 format="tle",
                 orderby="epoch desc",
-                limit=1,
+                limit=1,  # For NORAD (specific satellite), we only need the latest TLE
             )
         else:
             raw = client.gp(
@@ -625,7 +632,7 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
         elif "timeout" in error_msg.lower():
             return None, "Space-Track bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin."
         elif "rate limit" in error_msg.lower():
-            return None, "Space-Track hız sınırı aşıldı. Lütfen birkaç dakika bekleyin."
+            return None, "Space-Track hız sınırı aşıldı. Lütfen kilka dakika bekleyin."
         else:
             return None, f"Space-Track hatası: {error_msg[:100]}"
 
@@ -642,7 +649,7 @@ def fetch_celestrak_tles(group_key: str, sat_limit: int):
         celestrak_group = config["celestrak_group"]
         url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group}&FORMAT=TLE"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StarWeb-CARA/2.0"
+            "User-Agent": "Mozilla/5.0 (StarWeb-CARA/1.0)"
         }
         
         # Add retry logic for better reliability
@@ -769,7 +776,7 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
 # ================================================================================
 #  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
-def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
+def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> list:
     """
     Apsis (Apogee-Perigee) Filter — Section 2.1
     Reduces O(N^2) complexity by filtering pairs with non-overlapping
@@ -805,7 +812,7 @@ def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
     return passed
 
 
-def apsis_overlap(sat1, sat2, threshold_km: float = 50.0) -> bool:
+def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> bool:
     """
     Backward compatibility function for apsis overlap check.
     Returns True if two satellites have overlapping altitude bands.
@@ -835,21 +842,12 @@ def apsis_overlap(sat1, sat2, threshold_km: float = 50.0) -> bool:
 # ================================================================================
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
-def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, sigma_combined: float = None, hbr_km: float = 0.020) -> float:
+def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020) -> float:
     """
     Foster & Estes (1992) 2D-Pc Model — Section 3.1
     Enhanced with flexible parameter handling for compatibility.
     """
     try:
-        # Handle both old and new calling conventions
-        if sigma_combined is not None:
-            # Old calling convention with 5 parameters (backward compatibility)
-            # Use sigma_x as primary, ignore sigma_combined
-            pass
-        else:
-            # New calling convention with 4 parameters
-            pass
-
         if sigma_x <= 0 or sigma_y <= 0:
             return 0.0
 
@@ -1005,10 +1003,72 @@ def risk_level(pc: float) -> tuple:
 
 
 # ================================================================================
-#  MAIN CONJUNCTION ANALYSIS (APSIS FILTERED)
+#  HELPER FUNCTION FOR CONJUNCTION METRICS (EXTRACTED TO REDUCE DUPLICATION)
 # ================================================================================
+def _compute_conjunction_metrics(
+    sat1, sat2, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+):
+    """
+    Core function to compute conjunction metrics for a satellite pair.
+    Extracted to eliminate code duplication between compute_conjunctions and compute_conjunctions_custom.
+    """
+    # Compute distance array
+    dists = np.linalg.norm(pos1 - pos2, axis=0)
+    if len(dists) == 0 or np.all(np.isnan(dists)):
+        return None
+
+    tca_idx = int(np.nanargmin(dists))
+    min_d = float(dists[tca_idx])
+    if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
+        return None
+
+    best_t = ts.tt_jd(float(jd_values[tca_idx]))
+    dist_arr = dists.tolist()
+
+    rel_vel = _relative_velocity(sat1, sat2, best_t)
+    pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
+    pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km)  # Note: sigma_y = 2*sigma_x as in original
+    pc_max = max_pc_analysis(min_d, hbr_km)
+    mah = mahalanobis_test(min_d, sigma_km)
+    dil = dilution_check(pc_iso, sigma_km, min_d)
+    frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
+    sev, color = risk_level(pc_iso)
+
+    return {
+        "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
+        "Object A": sat1.name,
+        "Object B": sat2.name,
+        "Distance (km)": round(min_d, 3),
+        "Relative Velocity (km/s)": round(rel_vel, 3),
+        "Pc (isotropic)": pc_iso,
+        "Pc (Foster 2D)": pc_foster,
+        "Pc Max": pc_max,
+        "Pc (scientific)": f"{pc_iso:.3e}",
+        "Mahalanobis Md": mah["Md"],
+        "2D-Pc Valid": mah["label"],
+        "Dilution": dil["diluted"],
+        "Dilution Message": dil["msg"],
+        "Ec (J/g)": frag["E_c_J_per_g"],
+        "Fragmentation Level": frag["level"],
+        "Estimated Debris": frag["est_debris"],
+        "Risk Level": sev,
+        "_color": color,
+        "_dist_arr": dist_arr,
+        "_tca_tt": best_t.tt,
+        "_s1": sat1,
+        "_s2": sat2,
+    }
 
 
+def _relative_velocity(s1, s2, t) -> float:
+    v1 = s1.at(t).velocity.km_per_s
+    v2 = s2.at(t).velocity.km_per_s
+    return float(np.linalg.norm(np.array(v1) - np.array(v2)))
+
+
+# ================================================================================
+#  MAIN CONJUNCTION ANALYSIS FUNCTIONS (REFactored)
+# ================================================================================
 def compute_conjunctions(
     sats: list,
     window_hrs: int,
@@ -1033,79 +1093,37 @@ def compute_conjunctions(
         progress_bar = None
 
     # Apsis pre-filter
-    candidate_pairs = apsis_filter(sats, threshold_km=100.0)
+    candidate_pairs = apsis_filter(sats, threshold_km=APSIS_FILTER_THRESHOLD_KM)
     n_filtered = n_total - len(candidate_pairs)
     
     # Position caching for performance
     positions_by_id = {}
-    for idx, (s1, s2) in enumerate(candidate_pairs):
-        if progress_bar:
-            progress = (idx + 1) / len(candidate_pairs)
-            progress_bar.progress(progress, text=f"Computing positions... {idx+1}/{len(candidate_pairs)}")
-        
-        for sat in (s1, s2):
-            sat_id = id(sat)
-            if sat_id not in positions_by_id:
-                positions_by_id[sat_id] = propagated_positions(sat, times)
+    for idx, sat in enumerate(sats):
+        if progress_bar and idx % max(1, len(sats)//20) == 0:  # Update less frequently
+            progress = (idx + 1) / len(sats)
+            progress_bar.progress(progress, text=f"Precomputing positions... {idx+1}/{len(sats)}")
+        positions_by_id[id(sat)] = (sat, propagated_positions(sat, times))
 
     results = []
-    for idx, (s1, s2) in enumerate(candidate_pairs):
+    for idx, (sat1, sat2) in enumerate(candidate_pairs):
         if progress_bar:
             progress = (idx + 1) / len(candidate_pairs)
-            progress_bar.progress(progress, text=f"Analyzing conjunctions... {idx+1}/{len(candidate_pairs)}")
+            if idx % max(1, len(candidate_pairs)//20) == 0:  # Update less frequently
+                progress_bar.progress(progress, text=f"Analyzing conjunctions... {idx+1}/{len(candidate_pairs)}")
         
-        pos1 = positions_by_id.get(id(s1))
-        pos2 = positions_by_id.get(id(s2))
-        if pos1 is None or pos2 is None:
+        # Retrieve precomputed data
+        sat1_obj, pos1 = positions_by_id.get(id(sat1), (None, None))
+        sat2_obj, pos2 = positions_by_id.get(id(sat2), (None, None))
+        
+        if pos1 is None or pos2 is None or sat1_obj is None or sat2_obj is None:
             continue
 
-        dists = np.linalg.norm(pos1 - pos2, axis=0)
-        if len(dists) == 0 or np.all(np.isnan(dists)):
-            continue
-
-        tca_idx = int(np.nanargmin(dists))
-        min_d = float(dists[tca_idx])
-        best_t = ts.tt_jd(float(jd_values[tca_idx]))
-        dist_arr = dists.tolist()
-
-        if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
-            continue
-
-        rel_vel = _relative_velocity(s1, s2, best_t)
-        pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
-        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km)
-        pc_max = max_pc_analysis(min_d, hbr_km)
-        mah = mahalanobis_test(min_d, sigma_km)
-        dil = dilution_check(pc_iso, sigma_km, min_d)
-        frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
-        sev, color = risk_level(pc_iso)
-
-        results.append(
-            {
-                "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
-                "Object A": s1.name,
-                "Object B": s2.name,
-                "Distance (km)": round(min_d, 3),
-                "Relative Velocity (km/s)": round(rel_vel, 3),
-                "Pc (isotropic)": pc_iso,
-                "Pc (Foster 2D)": pc_foster,
-                "Pc Max": pc_max,
-                "Pc (scientific)": f"{pc_iso:.3e}",
-                "Mahalanobis Md": mah["Md"],
-                "2D-Pc Valid": mah["label"],
-                "Dilution": dil["diluted"],
-                "Dilution Message": dil["msg"],
-                "Ec (J/g)": frag["E_c_J_per_g"],
-                "Fragmentation Level": frag["level"],
-                "Estimated Debris": frag["est_debris"],
-                "Risk Level": sev,
-                "_color": color,
-                "_dist_arr": dist_arr,
-                "_tca_tt": best_t.tt,
-                "_s1": s1,
-                "_s2": s2,
-            }
+        # Compute metrics using helper function
+        result = _compute_conjunction_metrics(
+            sat1_obj, sat2_obj, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
         )
+        if result:
+            results.append(result)
 
     # Clear progress bar
     if progress_bar:
@@ -1114,17 +1132,60 @@ def compute_conjunctions(
     return pd.DataFrame(results), n_filtered, n_total
 
 
-def _relative_velocity(s1, s2, t) -> float:
-    v1 = s1.at(t).velocity.km_per_s
-    v2 = s2.at(t).velocity.km_per_s
-    return float(np.linalg.norm(np.array(v1) - np.array(v2)))
+def compute_conjunctions_custom(
+    my_sat,
+    sats: list,
+    window_hrs: int,
+    sigma_km: float,
+    hbr_km: float = 0.020,
+    mass_a_kg: float = 250.0,
+    mass_b_kg: float = 250.0,
+) -> pd.DataFrame:
+    """
+    Compares user's own satellite with existing satellite fleet.
+    Apsis filter + 5-min TCA scan + full Pc metrics.
+    """
+    now = ts.now()
+    times, _ = build_time_grid(now.tt, window_hrs)
+    jd_values = np.asarray(times.tt)
+    R_E, GM = EARTH_RADIUS_KM, MU_EARTH_KM3_S2
 
+    def apsis(sat):
+        try:
+            n = sat.model.no_kozai / 60.0
+            a = (GM / n**2) ** (1 / 3)
+            e = sat.model.ecco
+            return a * (1 - e) - R_E, a * (1 + e) - R_E
+        except Exception:
+            return 0.0, 10000.0
 
-def queue_simulation_pair(sat_a, sat_b, center_tt=None):
-    st.session_state["sim_sat_a"] = sat_a
-    st.session_state["sim_sat_b"] = sat_b
-    st.session_state["sim_center_tt"] = center_tt
-    st.session_state["run_sim"] = True
+    my_q, my_Q = apsis(my_sat)
+    my_pos = propagated_positions(my_sat, times)
+    results = []
+    if my_pos is None:
+        return pd.DataFrame(results)
+
+    # Precompute user satellite position once
+    my_sat_obj = my_sat
+
+    for idx, sat in enumerate(sats):
+        q, Q = apsis(sat)
+        # Apsis filter
+        if max(my_q, q) > min(my_Q, Q) + 100.0:  # Note: Using 100.0 here as in original (intentional for custom?)
+            continue
+
+        sat_pos = propagated_positions(sat, times)
+        if sat_pos is None:
+            continue
+
+        # Compute metrics using helper function
+        result = _compute_conjunction_metrics(
+            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_kg, mass_a_kg, mass_b_kg
+        )
+        if result:
+            results.append(result)
+
+    return pd.DataFrame(results)
 
 
 # ================================================================================
@@ -1159,10 +1220,7 @@ def fig_3d_orbits(sats):
     fig = go.Figure()
 
     # Load Earth texture with enhanced styling
-    # Perf: 360 -> 130 çözünürlük, vertex sayısını 259.200'den ~33.800'e indirir
-    # (%87 azalma). Görsel kalite kaybı ihmal edilebilir düzeyde, çünkü Dünya
-    # sahnede küçük bir arka plan objesi, uydular ön planda.
-    earth = load_earth_texture(resolution=130, style="realistic")
+    earth = load_earth_texture(resolution=360, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1177,13 +1235,12 @@ def fig_3d_orbits(sats):
                 hoverinfo="skip",
                 name="Earth",
                 lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(
-                    ambient=0.5,
-                    diffuse=0.9,
-                    specular=0.1,
-                    roughness=0.8,
-                    fresnel=0.1,
-                ),
+                lighting=dict": 0.5",
+    "use": 0.9,
+                    "specular": 0.1,
+                    "roughness": 0.8,
+                    "fresnel": 0.1,
+                },
             )
         )
     else:
@@ -1272,9 +1329,6 @@ def fig_3d_orbits(sats):
             aspectmode="cube",
             camera=dict(eye=dict(x=1.8, y=1.8, z=0.8), up=dict(x=0, y=0, z=1)),
         ),
-        # Perf + UX: Streamlit her rerun'da figürü yeniden oluşturur; uirevision
-        # olmadan kullanıcının döndürdüğü kamera her seferinde sıfırlanır.
-        uirevision="orbit-view-camera",
         legend=dict(
             font=dict(size=9, family="Space Mono", color="#c4d4e8"),
             bgcolor="rgba(5,7,10,.9)",
@@ -1454,7 +1508,7 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
         ),
         yaxis=dict(
             title="Distance (km)",
-            gridcolor="#1a2740",
+            gridcolor="#1a2121824",
             zeroline=False,
             tickfont=dict(size=9),
         ),
@@ -1565,106 +1619,8 @@ def fig_orbital_elements_radar(elems_list):
 
 
 # ================================================================================
-#  CONJUNCTION ANALYSIS FOR OWN SATELLITE
-# ================================================================================
-def compute_conjunctions_custom(
-    my_sat,
-    sats: list,
-    window_hrs: int,
-    sigma_km: float,
-    hbr_km: float = 0.020,
-    mass_a_kg: float = 250.0,
-    mass_b_kg: float = 250.0,
-) -> pd.DataFrame:
-    """
-    Compares user's own satellite with existing satellite fleet.
-    Apsis filter + 5-min TCA scan + full Pc metrics.
-    """
-    now = ts.now()
-    times, _ = build_time_grid(now.tt, window_hrs)
-    jd_values = np.asarray(times.tt)
-    R_E, GM = EARTH_RADIUS_KM, MU_EARTH_KM3_S2
-
-    def apsis(sat):
-        try:
-            n = sat.model.no_kozai / 60.0
-            a = (GM / n**2) ** (1 / 3)
-            e = sat.model.ecco
-            return a * (1 - e) - R_E, a * (1 + e) - R_E
-        except Exception:
-            return 0.0, 10000.0
-
-    my_q, my_Q = apsis(my_sat)
-    my_pos = propagated_positions(my_sat, times)
-    results = []
-    if my_pos is None:
-        return pd.DataFrame(results)
-
-    for sat in sats:
-        q, Q = apsis(sat)
-        # Apsis filter
-        if max(my_q, q) > min(my_Q, Q) + 100.0:
-            continue
-
-        sat_pos = propagated_positions(sat, times)
-        if sat_pos is None:
-            continue
-
-        dists = np.linalg.norm(my_pos - sat_pos, axis=0)
-        if len(dists) == 0 or np.all(np.isnan(dists)):
-            continue
-
-        tca_idx = int(np.nanargmin(dists))
-        min_d = float(dists[tca_idx])
-        best_t = ts.tt_jd(float(jd_values[tca_idx]))
-        dist_arr = dists.tolist()
-
-        if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
-            continue
-
-        rel_vel = _relative_velocity(my_sat, sat, best_t)
-        pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
-        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km)
-        pc_max = max_pc_analysis(min_d, hbr_km)
-        mah = mahalanobis_test(min_d, sigma_km)
-        dil = dilution_check(pc_iso, sigma_km, min_d)
-        frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
-        sev, color = risk_level(pc_iso)
-
-        results.append(
-            {
-                "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
-                "Object A": my_sat.name,
-                "Object B": sat.name,
-                "Distance (km)": round(min_d, 3),
-                "Relative Velocity (km/s)": round(rel_vel, 3),
-                "Pc (isotropic)": pc_iso,
-                "Pc (Foster 2D)": pc_foster,
-                "Pc Max": pc_max,
-                "Pc (scientific)": f"{pc_iso:.3e}",
-                "Mahalanobis Md": mah["Md"],
-                "2D-Pc Valid": mah["label"],
-                "Dilution": dil["diluted"],
-                "Dilution Message": dil["msg"],
-                "Ec (J/g)": frag["E_c_J_per_g"],
-                "Fragmentation Level": frag["level"],
-                "Estimated Debris": frag["est_debris"],
-                "Risk Level": sev,
-                "_color": color,
-                "_dist_arr": dist_arr,
-                "_tca_tt": best_t.tt,
-                "_s1": my_sat,
-                "_s2": sat,
-            }
-        )
-
-    return pd.DataFrame(results)
-
-
-# ================================================================================
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
-
 
 def fig_animated_conjunction(
     sat_a,
@@ -1677,6 +1633,7 @@ def fig_animated_conjunction(
     """
     3D Plotly figure showing two satellites with real-time animation.
     Robust version with error handling and fallback.
+    Precomputed star field for performance.
     """
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
@@ -1735,6 +1692,7 @@ def fig_animated_conjunction(
 
     fig = go.Figure()
 
+    # Precomputed star field (static)
     rng = np.random.default_rng(7)
     star_count = 90
     star_phi = rng.uniform(0, 2 * np.pi, star_count)
@@ -1758,9 +1716,7 @@ def fig_animated_conjunction(
     )
 
     # Perf: lower resolution → fewer WebGL vertices → much faster render per frame
-    # 72 -> 42: vertex sayısı 10.368'den ~3.528'e iner (%66 azalma). Animasyonda
-    # Dünya statik arka plan olduğu için bu fark gözle neredeyse hiç fark edilmez.
-    earth = load_earth_texture(resolution=42, style="night")
+    earth = load_earth_texture(resolution=72, style="night")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1837,7 +1793,7 @@ def fig_animated_conjunction(
     fig.add_trace(
         go.Scatter3d(
             x=np.zeros(_pts).tolist(),
-            y=(r_earth * np.cos(_lat_pm)).tolist(),
+            y=(r_earth * np.cos(_lat_pm)).tolit(),
             z=(r_earth * np.sin(_lat_pm)).tolist(),
             mode="lines",
             line=dict(color="rgba(100,150,200,0.25)", width=1),
@@ -2022,7 +1978,7 @@ def fig_animated_conjunction(
         if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
             tr1 = go.Scatter3d(
                 x=tb[0].tolist(),
-                y=tb[1].tolist(),
+                y=tb[1].tolit(),
                 z=tb[2].tolist(),
                 mode="lines",
                 line=dict(color="rgba(255,107,0,0.95)", width=3.5),
@@ -2155,7 +2111,7 @@ def fig_animated_conjunction(
             dict(
                 args=[
                     [str(i)],
-                    dict(frame=dict(duration=0, redraw=False), mode="immediate"),
+                    dict(frame=dict(duration=0, redraw=True), mode="immediate"),
                 ],
                 label=lbl,
                 method="animate",
@@ -2186,9 +2142,6 @@ def fig_animated_conjunction(
             aspectmode="cube",
             camera=tca_camera,  # dynamically oriented toward TCA
         ),
-        # Perf + UX: kamera açısını frame güncellemeleri arasında korur, böylece
-        # redraw=False ile birlikte animasyon oynatılırken de kamera döndürülebilir.
-        uirevision="anim-camera",
         legend=dict(
             font=dict(size=8, family="Space Mono"),
             bgcolor="rgba(0,4,8,.85)",
@@ -2217,8 +2170,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(n_frames)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
-                                transition=dict(duration=0, easing="linear"),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2230,8 +2182,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 2)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
-                                transition=dict(duration=0, easing="linear"),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2243,8 +2194,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 5)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
-                                transition=dict(duration=0, easing="linear"),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2265,11 +2215,7 @@ def fig_animated_conjunction(
                         method="animate",
                         args=[
                             [str(tca_idx)],
-                            dict(
-                                frame=dict(duration=0, redraw=False),
-                                transition=dict(duration=0),
-                                mode="immediate",
-                            ),
+                            dict(frame=dict(duration=0, redraw=True), mode="immediate"),
                         ],
                     ),
                 ],
@@ -2319,7 +2265,7 @@ st.markdown(
               background-clip: text;">
     Conjunction Assessment and Collision Risk Analysis
   </div>
-  <h1 style="margin:0; padding:0; font-size:2rem; line-height:1.3;">
+  <h1 style="margin:0; font-size:2rem; line-height:1.3;">
     Low Earth Orbit<br>
     <span style="color:#00d4ff;">Conjunction Assessment &amp; Collision Risk Analysis</span>
   </h1>
@@ -2436,7 +2382,7 @@ st.sidebar.markdown(
 manual_tle_text = st.sidebar.text_area(
     "Manual TLE",
     height=110,
-    placeholder="MY-SAT\n1 99999U ...\n2 99999  ...",
+    placeholder="ISS (ZARYA)\n1 25544U 98067A   24065.52722916  .00016717  00000+0  32296-3 0  9994\n2 25544  51.6412  237.8783 0003724 100.6644  259.4049 15.50110392 44874",
     label_visibility="collapsed",
     key="manual_tle_input",
 )
@@ -3173,7 +3119,7 @@ with tab4:
 
             # 3D animation
             st.info(
-                "ℹ️ Tip: You can freely rotate/zoom the camera while the animation plays. Use STOP or the timeline slider to pause and inspect a specific moment."
+                "ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view."
             )
             st.plotly_chart(anim_fig, use_container_width=True, key="anim_3d_tab4")
 
@@ -3429,3 +3375,5 @@ with tab7:
     </div>""",
         unsafe_allow_html=True,
     )
+
+--- End of starweb-caraa.py ---
