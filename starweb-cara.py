@@ -26,6 +26,38 @@ except Exception as e:
     st.error(f"Skyfield timescale initialization failed: {e}")
     ts = None
 
+# ----------------------------------------------------------------------
+#  Helper: queue a pair for the live 3‑D simulation
+# ----------------------------------------------------------------------
+def queue_simulation_pair(sat_a, sat_b, center_tt=None):
+    """
+    Store the selected satellite pair (and an optional TCA centre time)
+    in session state so that the Live‑Simulation tab can pick it up
+    and start the animation.
+
+    Parameters
+    ----------
+    sat_a, sat_b : EarthSatellite
+        The two satellites whose encounter you want to visualise.
+    center_tt : float, optional
+        Skyfield TT timestamp that should be used as the centre of the
+        simulation window (e.g. the TCA time).  If None, the simulation
+        will start at the current time.
+    """
+    # Guard against accidental None values (optional but helpful)
+    if sat_a is None or sat_b is None:
+        st.error("Cannot queue a simulation – one of the satellites is None.")
+        return
+
+    # Save the objects and the optional centre time
+    st.session_state["sim_sat_a"] = sat_a
+    st.session_state["sim_sat_b"] = sat_b
+    st.session_state["sim_center_tt"] = center_tt
+
+    # Tell the UI to run the simulation on the next rerun
+    st.session_state["run_sim"] = True
+
+
 # ================================================================================
 #  CONSTANTS AND CONFIGURATION
 # ================================================================================
@@ -1065,6 +1097,7 @@ def _relative_velocity(s1, s2, t) -> float:
     v1 = s1.at(t).velocity.km_per_s
     v2 = s2.at(t).velocity.km_per_s
     return float(np.linalg.norm(np.array(v1) - np.array(v2)))
+
 
 
 # ================================================================================
