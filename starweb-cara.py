@@ -3379,5 +3379,3 @@ with tab7:
     </div>""",
         unsafe_allow_html=True,
     )
-
---- End of starweb-caraa.py ---
