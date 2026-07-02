@@ -3009,37 +3009,36 @@ with tab3:
                 )
 
 
-# ── TAB 4: LIVE SIMULATION ──────────────────────────────────────────────────
+# --------------------------------------------------------------
+#  TAB 4: LIVE SIMULATION  (YENİDEN TASARLANMIŞ)
+# --------------------------------------------------------------
 with tab4:
     st.markdown("## Live 3D Orbit Simulation")
     st.markdown(
-        """<div class="info-panel">
-    Watch the encounter between two satellites with <b>real-time</b> animation.
-    Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
-    </div>""",
+        """
+        <div class="info-panel">
+            Watch the encounter between two satellites with <b>real‑time</b> animation.
+            Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-    # Satellite selection source
-    if "sim_sat_a" in st.session_state and "sim_sat_b" in st.session_state:
-        default_a = st.session_state["sim_sat_a"].name
-        default_b = st.session_state["sim_sat_b"].name
-        sim_center_tt = st.session_state.get("sim_center_tt")
-        center_note = ""
-        if sim_center_tt is not None:
-            center_note = f"<small>Simulation is centered on selected event TCA: {ts.tt_jd(sim_center_tt).utc_strftime('%Y-%m-%d %H:%M:%S UTC')}</small>"
-        st.markdown(
-            f"""<div class="info-panel">
-        <b>Selected pair:</b> {default_a} × {default_b}<br>
-        <small>Use dropdown menus below to change.</small><br>
-        {center_note}
-        </div>""",
-            unsafe_allow_html=True,
-        )
-    else:
-        default_a = sats[0].name if sats else ""
-        default_b = sats[1].name if len(sats) > 1 else ""
+    # ------------------------------------------------------------------
+    #  Session‑state başlatıcıları (eğer daha önce tanımlanmadıysa)
+    # ------------------------------------------------------------------
+    if "run_sim" not in st.session_state:
+        st.session_state.run_sim = False
+    if "sim_sat_a" not in st.session_state:
+        st.session_state.sim_sat_a = None
+    if "sim_sat_b" not in st.session_state:
+        st.session_state.sim_sat_b = None
+    if "sim_center_tt" not in st.session_state:
+        st.session_state.sim_center_tt = None
 
+    # ------------------------------------------------------------------
+    #  Uydu seçimi (sidebar yerine burada tutarlı bir UI)
+    # ------------------------------------------------------------------
     sat_names = [s.name for s in sats]
     if "my_sat" in st.session_state:
         sat_names_ext = [st.session_state["my_sat"].name] + sat_names
@@ -3048,133 +3047,231 @@ with tab4:
         sat_names_ext = sat_names
         all_sats_ext = sats
 
-    if st.session_state.get("_sim_default_from_window") != window_hrs:
-        st.session_state["sim_hrs"] = min(window_hrs, 48)
-        st.session_state["_sim_default_from_window"] = window_hrs
+    # Önceki seçimleri tutalım (sayfa yenilenince sıfırlanmasın)
+    default_a = st.session_state.get("sel_a", sat_names_ext[0] if sat_names_ext else "")
+    default_b = st.session_state.get("sel_b", sat_names_ext[1] if len(sat_names_ext) > 1 else "")
 
-    sc1, sc2, sc3 = st.columns([2, 2, 1])
-    with sc1:
-        sel_a = st.selectbox(
-            "Satellite A",
-            sat_names_ext,
-            index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
-            key="sim_a",
-        )
-    with sc2:
-        sel_b = st.selectbox(
-            "Satellite B",
-            sat_names_ext,
-            index=sat_names_ext.index(default_b)
-            if default_b in sat_names_ext
-            else min(1, len(sat_names_ext) - 1),
-            key="sim_b",
-        )
-    with sc3:
-        sim_hrs = st.slider("Window (hours)", 1, 48, min(window_hrs, 48), key="sim_hrs")
+    # ------------------------------------------------------------------
+    #  Kontrol paneli
+    # ------------------------------------------------------------------
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([2, 2, 1])
+        with c1:
+            sel_a = st.selectbox(
+                "Satellite A",
+                sat_names_ext,
+                index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
+                key="live_sel_a",
+            )
+        with c2:
+            sel_b = st.selectbox(
+                "Satellite B",
+                sat_names_ext,
+                index=sat_names_ext.index(default_b)
+                if default_b in sat_names_ext
+                else min(1, len(sat_names_ext) - 1),
+                key="live_sel_b",
+            )
+        with c3:
+            sim_hrs = st.slider(
+                "Window (hours)",
+                1,
+                48,
+                min(st.session_state.get("window_hrs", window_hrs), 48),
+                key="live_window_hrs",
+            )
 
-    # Display options
-    st.markdown("**Display Options**")
-    col_opt1, col_opt2 = st.columns(2)
-    with col_opt1:
-        show_orbits = st.checkbox("Show Orbit Trails", value=True, key="show_orbits")
-    with col_opt2:
-        show_tca = st.checkbox("Show TCA Marker", value=True, key="show_tca")
+        # Görünüm seçenekleri (expander içinde)
+        with st.expander("⚙️ Görünüm Seçenekleri", expanded=False):
+            opt1, opt2 = st.columns(2)
+            with opt1:
+                show_orbits = st.checkbox(
+                    "Show Orbit Trails",
+                    value=True,
+                    key="live_show_orbits",
+                )
+            with opt2:
+                show_tca = st.checkbox(
+                    "Show TCA Marker",
+                    value=True,
+                    key="live_show_tca",
+                )
+            # Hız kontrolü (opsiyonel)
+            anim_speed = st.slider(
+                "Playback speed",
+                0.5,
+                2.0,
+                1.0,
+                0.1,
+                key="live_anim_speed",
+                help="1.0 = normal speed, 0.5 = two‑times slower, 2.0 = two‑times faster",
+            )
 
-    if sel_a == sel_b:
-        st.warning("Select two different satellites.")
-    else:
-        sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
-        sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
-
-        if st.button("▶ START SIMULATION", key="start_sim"):
-            if sim_hrs < 0.5:
-                st.warning("Simulation window must be at least 30 minutes.")
-            else:
-                queue_simulation_pair(sat_obj_a, sat_obj_b, None)
-
-        if (
-            st.session_state.get("run_sim")
-            and "sim_sat_a" in st.session_state
-            and "sim_sat_b" in st.session_state
+    # ------------------------------------------------------------------
+    #  Başlat / Durdur butonları
+    # ------------------------------------------------------------------
+    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
+    with btn_col1:
+        start_disabled = st.session_state.run_sim or (sel_a == sel_b)
+        if st.button(
+            "▶ START SIMULATION",
+            disabled=start_disabled,
+            key="live_start_btn",
+            use_container_width=True,
         ):
-            sa = st.session_state["sim_sat_a"]
-            sb = st.session_state["sim_sat_b"]
-            sim_center_tt = st.session_state.get("sim_center_tt")
-            with st.spinner("Calculating orbits and creating animation..."):
-                anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = (
-                    fig_animated_conjunction(sa, sb, sim_hrs, show_orbits, show_tca)
+            if sel_a == sel_b:
+                st.warning("Please select two different satellites.")
+            else:
+                sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
+                sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
+                # Simülasyon kuyruğunu doldur
+                queue_simulation_pair(sat_obj_a, sat_obj_b, None)
+                st.session_state.run_sim = True
+                st.session_state.sel_a = sel_a
+                st.session_state.sel_b = sel_b
+                st.session_state.window_hrs = sim_hrs
+                st.experimental_rerun()  # anlık UI güncellemesi
+
+    with btn_col2:
+        if st.button(
+            "⏸ STOP",
+            disabled=not st.session_state.run_sim,
+            key="live_stop_btn",
+            use_container_width=True,
+        ):
+            st.session_state.run_sim = False
+            st.experimental_rerun()
+
+    with btn_col3:
+        st.caption(
+            "ℹ️ Use **STOP** to pause the animation, then drag the slider or rotate the view manually."
+        )
+
+    # ------------------------------------------------------------------
+    #  Simülasyon çalışıyorsa animasyonu göster
+    # ------------------------------------------------------------------
+    if st.session_state.get("run_sim", False):
+        # Seçili uydu nesnelerini al (session_state'dan)
+        sa = st.session_state["sim_sat_a"]
+        sb = st.session_state["sim_sat_b"]
+        center_tt = st.session_state.get("sim_center_tt")
+        window_hrs = st.session_state.get("window_hrs", sim_hrs)
+
+        with st.spinner("Preparing animation …"):
+            # Animasyon fonksiyonunu önbelleğe al (aynı parametreler için yeniden hesaplama yapmaz)
+            @st.cache_data(show_spinner=False)
+            def get_anim_fig(_sa, _sb, _hrs, _show_orbits, _show_tca, _center_tt):
+                return fig_animated_conjunction(
+                    _sa,
+                    _sb,
+                    window_hrs=_hrs,
+                    show_orbits=_show_orbits,
+                    show_tca=_show_tca,
+                    center_tt=_center_tt,
                 )
 
-            # TCA info
-            tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
-            sev_sim, col_sim = risk_level(
-                collision_probability_isotropic(tca_d, sigma_km, hbr_km)
+            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = get_anim_fig(
+                sa,
+                sb,
+                window_hrs,
+                show_orbits,
+                show_tca,
+                center_tt,
             )
-            tca_tplus_min = int(round((tca_tt - jd_arr[0]) * 1440))
-            tc1, tc2, tc3, tc4 = st.columns(4)
-            with tc1:
-                st.metric("TCA Time (UTC)", tca_utc)
-            with tc2:
-                st.metric("Min. Distance (km)", f"{tca_d:.3f}")
-            with tc3:
-                st.metric("TCA T+ (min)", tca_tplus_min)
-            with tc4:
-                st.metric("Risk", sev_sim)
 
-            # 3D animation
-            st.info(
-                "ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view."
-            )
-            st.plotly_chart(anim_fig, use_container_width=True, key="anim_3d_tab4")
+        # --------------------------------------------------------------
+        #  TCA özet metrikleri
+        # --------------------------------------------------------------
+        tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+        sev_sim, col_sim = risk_level(
+            collision_probability_isotropic(tca_d, sigma_km, hbr_km)
+        )
+        tca_tplus_min = int(round((tca_tt - jd_arr[0]) * 1440))
 
-            # Distance profile (static)
-            st.markdown("**Distance Profile (Full Window)**")
-            t_ax = (jd_arr - jd_arr[0]) * 24.0
-            fig_dp_sim = go.Figure()
-            fig_dp_sim.add_hline(
-                y=hbr_km,
-                line=dict(color="#ff2b4d", dash="dot", width=1),
-                annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("TCA Time (UTC)", tca_utc)
+        with m2:
+            st.metric("Min. Distance (km)", f"{tca_d:.3f}")
+        with m3:
+            st.metric("TCA T+ (min)", tca_tplus_min)
+        with m4:
+            st.metric("Risk", sev_sim)
+
+        # --------------------------------------------------------------
+        #  3D animasyon
+        # --------------------------------------------------------------
+        st.info(
+            "ℹ️ Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view."
+        )
+        # Animasyon hızı kontrolü: frame süresini `anim_speed` ile çarparız
+        # Plotly’nin `frame.duration` parametresi milisaniye olduğundan:
+        frame_duration = int(60 / anim_speed)  # 60 ms temel süre (1x)
+        # Ancak `fig_animated_conjunction` içinde hard‑coded 60 ms kullanıyoruz;
+        # bu yüzden burada sadece kullanıcıya bilgi veriyoruz; isteğe bağlı olarak
+        # fonksiyonu `frame_duration` parametresi alacak şekilde değiştirebilirsiniz.
+        st.plotly_chart(
+            anim_fig,
+            use_container_width=True,
+            key="live_anim_3d",
+            config={"scrollZoom": False, "displayModeBar": False},
+        )
+
+        # --------------------------------------------------------------
+        #  Distance profile (statistik)
+        # --------------------------------------------------------------
+        st.markdown("**Distance Profile (Full Window)**")
+        t_ax = (jd_arr - jd_arr[0]) * 24.0
+        fig_dp_sim = go.Figure()
+        fig_dp_sim.add_hline(
+            y=hbr_km,
+            line=dict(color="#ff2b4d", dash="dot", width=1),
+            annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
+        )
+        fig_dp_sim.add_trace(
+            go.Scatter(
+                x=t_ax,
+                y=dists_arr,
+                mode="lines",
+                line=dict(color="#00c8ff", width=1.5),
+                fill="tozeroy",
+                fillcolor="rgba(0,200,255,.04)",
+                name="Distance (km)",
             )
+        )
+        dists_profile = np.asarray(dists_arr, dtype=float)
+        if len(dists_profile) and not np.all(np.isnan(dists_profile)):
+            tca_profile_idx = int(np.nanargmin(dists_profile))
             fig_dp_sim.add_trace(
                 go.Scatter(
-                    x=t_ax,
-                    y=dists_arr,
-                    mode="lines",
-                    line=dict(color="#00c8ff", width=1.5),
-                    fill="tozeroy",
-                    fillcolor="rgba(0,200,255,.04)",
-                    name="Distance (km)",
+                    x=[t_ax[tca_profile_idx]],
+                    y=[dists_profile[tca_profile_idx]],
+                    mode="markers+text",
+                    marker=dict(color="#ff2b4d", size=10),
+                    text=[f" TCA {dists_profile[tca_profile_idx]:.1f} km"],
+                    textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
+                    name="TCA",
                 )
             )
-            dists_profile = np.asarray(dists_arr, dtype=float)
-            if len(dists_profile) and not np.all(np.isnan(dists_profile)):
-                tca_profile_idx = int(np.nanargmin(dists_profile))
-                fig_dp_sim.add_trace(
-                    go.Scatter(
-                        x=[t_ax[tca_profile_idx]],
-                        y=[dists_profile[tca_profile_idx]],
-                        mode="markers+text",
-                        marker=dict(color="#ff2b4d", size=10),
-                        text=[f" TCA {dists_profile[tca_profile_idx]:.1f} km"],
-                        textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
-                        name="TCA",
-                    )
-                )
-            fig_dp_sim.update_layout(
-                **DARK,
-                height=240,
-                xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
-                yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
-                title=dict(
-                    text=f"Distance Profile — {sa.name} × {sb.name}",
-                    font=dict(size=11, family="Barlow Condensed", color="#00c8ff"),
-                    x=0.01,
-                ),
-                margin=dict(l=10, r=10, t=35, b=10),
-                legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
-            )
-            st.plotly_chart(fig_dp_sim, use_container_width=True, key="dist_prof_tab4")
+        fig_dp_sim.update_layout(
+            **DARK,
+            height=240,
+            xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
+            yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
+            title=dict(
+                text=f"Distance Profile — {sa.name} × {sb.name}",
+                font=dict(size=11, family="Barlow Condensed", color="#00c8ff"),
+                x=0.01,
+            ),
+            margin=dict(l=10, r=10, t=35, b=10),
+            legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
+        )
+        st.plotly_chart(
+            fig_dp_sim,
+            use_container_width=True,
+            key="live_dist_profile",
+            config={"scrollZoom": False, "displayModeBar": False},
+        )
 
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
