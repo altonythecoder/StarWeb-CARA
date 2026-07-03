@@ -1,12 +1,13 @@
-# Thesis version accompanying Altay ÇAVUŞ - StarWeb-CARA (2026)
-# Enhanced and Optimized Version - 2026
+# StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
+# Starlink & OneWeb Megaconstellations — Thesis Project
+# Altay ÇAVUŞ — Space Sciences and Technologies, ÇOMÜ (2026)
+
 import math
 from datetime import datetime, timezone
 from io import BytesIO
 from itertools import combinations
 from functools import lru_cache
 import time
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -19,16 +20,20 @@ from scipy.stats import norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
-# Initialize timescale with error handling
+
+# ================================================================================
+#  TIMESCALE INIT & SIMULATION QUEUE HELPER
+# ================================================================================
+# Skyfield zaman ölçeği — orijinal tek-dosya sürümde dosyanın en başında
+# (importlardan hemen sonra) global olarak bir kez oluşturuluyordu.
+# Burada module-level'da tutuluyor, tüm modüller buradan import ediyor.
+
 try:
     ts = load.timescale()
 except Exception as e:
     st.error(f"Skyfield timescale initialization failed: {e}")
     ts = None
 
-# ----------------------------------------------------------------------
-#  Helper: queue a pair for the live 3‑D simulation
-# ----------------------------------------------------------------------
 def queue_simulation_pair(sat_a, sat_b, center_tt=None):
     """
     Store the selected satellite pair (and an optional TCA centre time)
@@ -58,6 +63,11 @@ def queue_simulation_pair(sat_a, sat_b, center_tt=None):
     st.session_state["run_sim"] = True
 
 
+# ================================================================================
+
+# ================================================================================
+#  TIME AND ORBITAL HELPERS
+# ================================================================================
 # ================================================================================
 #  CONSTANTS AND CONFIGURATION
 # ================================================================================
@@ -516,6 +526,8 @@ header[data-testid="stHeader"]{display:none !important;}
 # ================================================================================
 #  EARTH VIEW - ENHANCED WITH ERROR HANDLING
 # ================================================================================
+#  EARTH VIEW - ENHANCED WITH ERROR HANDLING
+# ================================================================================
 @st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def load_earth_texture(resolution: int = 360, style: str = "night"):
     """
@@ -602,6 +614,8 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
         return None
 
 
+# ================================================================================
+#  DATA FETCHING & TLE PARSING
 # ================================================================================
 #  DATA FETCHING
 # ================================================================================
@@ -772,6 +786,8 @@ def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -
 
 
 # ================================================================================
+#  ORBITAL ELEMENTS & APSIS FILTER
+# ================================================================================
 #  ORBITAL ELEMENTS (from TLE)
 # ================================================================================
 def get_orbital_elements(sat: EarthSatellite) -> dict:
@@ -872,6 +888,8 @@ def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -
     return max(q1, q2) <= min(Q1, Q2) + threshold_km
 
 
+# ================================================================================
+#  RISK CALCULATIONS (Foster 2D-Pc, Mahalanobis, Max Pc, Dilution, Fragmentation, Risk Level)
 # ================================================================================
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
@@ -1036,6 +1054,8 @@ def risk_level(pc: float) -> tuple:
 
 
 # ================================================================================
+#  CONJUNCTION ANALYSIS
+# ================================================================================
 #  HELPER FUNCTION FOR CONJUNCTION METRICS (EXTRACTED TO REDUCE DUPLICATION)
 # ================================================================================
 def _compute_conjunction_metrics(
@@ -1097,7 +1117,6 @@ def _relative_velocity(s1, s2, t) -> float:
     v1 = s1.at(t).velocity.km_per_s
     v2 = s2.at(t).velocity.km_per_s
     return float(np.linalg.norm(np.array(v1) - np.array(v2)))
-
 
 
 # ================================================================================
@@ -1223,6 +1242,12 @@ def compute_conjunctions_custom(
 
 
 # ================================================================================
+#  PLOTS - ENHANCED VISUALIZATION
+# ================================================================================
+# NOT: fig_animated_conjunction artik module_figures_animation.py icinde.
+# app.py icinde iki modulden de import edin.
+
+
 #  PLOTS - ENHANCED VISUALIZATION
 # ================================================================================
 DARK = dict(
@@ -1655,6 +1680,8 @@ def fig_orbital_elements_radar(elems_list):
 
 
 # ================================================================================
+#  LIVE 3D ANIMATION (Two Satellites — TCA Focused) — OPTİMİZE EDİLDİ
+# ================================================================================
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
 
@@ -1674,19 +1701,21 @@ def fig_animated_conjunction(
     """
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
-    # Target max ~120 frames so browser doesn't choke.
+    # max_frames=50: paylaşılan/düşük güçlü makinelerde (jüri sunumu vb.)
+    # de akıcı kalması için 96'dan düşürüldü. Her frame artık sadece 3 trace
+    # taşıdığı için (eskiden 5), toplam WebGL güncelleme yükü zaten
+    # ~3x azaldı; ek olarak frame sayısını da kısmak toplam yükü daha da düşürür.
     sim_start_tt = (
         float(center_tt) - (window_hrs / 2.0) / 24.0
         if center_tt is not None
         else now.tt
     )
-    max_frames = 96
+    max_frames = 50
     step_min = max(2, int(math.ceil(window_hrs * 60 / max_frames)))
     n_frames = min(max(2, int(math.ceil(window_hrs * 60 / step_min)) + 1), max_frames)
     if n_frames < 2:
         return go.Figure(), 0, 0.0, np.array([0.0]), np.array([sim_start_tt]), sim_start_tt
 
-    trail_len = min(18, max(8, n_frames // 5))
     orbit_pts = 72
 
     # Full orbit paths (static background)
@@ -1752,8 +1781,11 @@ def fig_animated_conjunction(
         )
     )
 
-    # Perf: lower resolution → fewer WebGL vertices → much faster render per frame
-    earth = load_earth_texture(resolution=72, style="night")
+    # Perf: lower resolution → fewer WebGL vertices → much faster render per frame.
+    # resolution=40 → grid is 40 x 80 = 3200 vertices (was 72x144=10368 → ~3.2x lighter).
+    # Bu değer sabit ve statik (frame başına yeniden çizilmiyor), bu yüzden
+    # görsel kalite kaybı animasyon sırasında neredeyse fark edilmiyor.
+    earth = load_earth_texture(resolution=40, style="night")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1817,7 +1849,7 @@ def fig_animated_conjunction(
     # Prime meridian (lon=0)
     fig.add_trace(
         go.Scatter3d(
-            x=(r_earth * np.cos(_lat_pm)).tolit(),
+            x=(r_earth * np.cos(_lat_pm)).tolist(),
             y=np.zeros(_pts).tolist(),
             z=(r_earth * np.sin(_lat_pm)).tolist(),
             mode="lines",
@@ -1831,7 +1863,7 @@ def fig_animated_conjunction(
         go.Scatter3d(
             x=np.zeros(_pts).tolist(),
             y=(r_earth * np.cos(_lat_pm)).tolist(),
-            z=(r_earth * np.sin(_lat_pm)).tolis(),
+            z=(r_earth * np.sin(_lat_pm)).tolist(),
             mode="lines",
             line=dict(color="rgba(100,150,200,0.25)", width=1),
             showlegend=False,
@@ -1972,70 +2004,59 @@ def fig_animated_conjunction(
             )
         )
 
+    # ── PERF REWRITE: Trail'ler artık STATİK ─────────────────────────────────
+    # Eskiden her frame'de "kayan pencere" (trail_len noktalık) yeniden
+    # hesaplanıp yeni bir Scatter3d nesnesi olarak yollanıyordu (frame başına
+    # 2 trace). Bu, n_frames sayısı kadar Python nesnesi + WebGL güncellemesi
+    # demekti. Artık tüm animasyon penceresindeki iz TEK SEFERDE, statik
+    # olarak çiziliyor; frame'ler sadece hareketli marker'ları günceller.
+    if pos_a.shape[1] > 0 and not np.all(np.isnan(pos_a)):
+        fig.add_trace(
+            go.Scatter3d(
+                x=pos_a[0].tolist(),
+                y=pos_a[1].tolist(),
+                z=pos_a[2].tolist(),
+                mode="lines",
+                line=dict(color="rgba(0,200,255,0.65)", width=3.5),
+                name=sat_a.name + " track",
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+    if pos_b.shape[1] > 0 and not np.all(np.isnan(pos_b)):
+        fig.add_trace(
+            go.Scatter3d(
+                x=pos_b[0].tolist(),
+                y=pos_b[1].tolist(),
+                z=pos_b[2].tolist(),
+                mode="lines",
+                line=dict(color="rgba(255,107,0,0.65)", width=3.5),
+                name=sat_b.name + " track",
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+
     n_static = len(fig.data)
 
     def make_dynamic_traces(i):
         """
-        Always returns EXACTLY 5 traces (Plotly frame update requires fixed count).
+        Always returns EXACTLY 3 traces (Plotly frame update requires fixed count).
+        (Eskiden 5'ti: trail A, trail B, marker A, marker B, distance line.
+        Trail'ler artık statik — bkz. yukarısı. Mesafe metni de kaldırıldı;
+        değer artık başlıkta gösteriliyor, çünkü 3D WebGL'de her frame'de
+        text glyph güncellemek pahalı.)
         Earth rotation removed — static Earth stays in base figure (memory + speed fix).
         """
-        t0 = max(0, i - trail_len)
-        ta = pos_a[:, t0 : i + 1]
-        tb = pos_b[:, t0 : i + 1]
         pa = pos_a[:, i]
         pb = pos_b[:, i]
         d_val = dists[i]
         dc = dist_color(d_val)
         beam_width = 4 if not np.isnan(d_val) and d_val < 200 else 3
-        dist_txt = f"  Δ {d_val:.1f} km" if not np.isnan(d_val) else ""
 
-        # Trace 0 — Trail A
-        if ta.shape[1] > 0 and not np.all(np.isnan(ta)):
-            tr0 = go.Scatter3d(
-                x=ta[0].tolist(),
-                y=ta[1].tolist(),
-                z=ta[2].tolist(),
-                mode="lines",
-                line=dict(color="rgba(0,200,255,0.95)", width=3.5),
-                name=sat_a.name,
-                showlegend=False,
-            )
-        else:
-            tr0 = go.Scatter3d(
-                x=[],
-                y=[],
-                z=[],
-                mode="lines",
-                line=dict(color="rgba(0,200,255,0.95)", width=3.5),
-                name=sat_a.name,
-                showlegend=False,
-            )
-
-        # Trace 1 — Trail B
-        if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
-            tr1 = go.Scatter3d(
-                x=tb[0].tolist(),
-                y=tb[1].tolist(),
-                z=tb[2].tolist(),
-                mode="lines",
-                line=dict(color="rgba(255,107,0,0.95)", width=3.5),
-                name=sat_b.name,
-                showlegend=False,
-            )
-        else:
-            tr1 = go.Scatter3d(
-                x=[],
-                y=[],
-                z=[],
-                mode="lines",
-                line=dict(color="rgba(255,107,0,0.95)", width=3.5),
-                name=sat_b.name,
-                showlegend=False,
-            )
-
-        # Trace 2 — Position marker A
+        # Trace 0 — Position marker A
         if not np.any(np.isnan(pa)):
-            tr2 = go.Scatter3d(
+            tr0 = go.Scatter3d(
                 x=[float(pa[0])],
                 y=[float(pa[1])],
                 z=[float(pa[2])],
@@ -2051,7 +2072,7 @@ def fig_animated_conjunction(
                 showlegend=False,
             )
         else:
-            tr2 = go.Scatter3d(
+            tr0 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
@@ -2061,9 +2082,9 @@ def fig_animated_conjunction(
                 showlegend=False,
             )
 
-        # Trace 3 — Position marker B
+        # Trace 1 — Position marker B
         if not np.any(np.isnan(pb)):
-            tr3 = go.Scatter3d(
+            tr1 = go.Scatter3d(
                 x=[float(pb[0])],
                 y=[float(pb[1])],
                 z=[float(pb[2])],
@@ -2079,7 +2100,7 @@ def fig_animated_conjunction(
                 showlegend=False,
             )
         else:
-            tr3 = go.Scatter3d(
+            tr1 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
@@ -2089,21 +2110,20 @@ def fig_animated_conjunction(
                 showlegend=False,
             )
 
-        # Trace 4 — Distance line
+        # Trace 2 — Distance line (metin YOK — 3D WebGL'de her frame'de text
+        # glyph güncellemek pahalıydı; mesafe değeri artık başlıkta gösteriliyor)
         if not np.any(np.isnan(pa)) and not np.any(np.isnan(pb)):
-            tr4 = go.Scatter3d(
+            tr2 = go.Scatter3d(
                 x=[float(pa[0]), float(pb[0])],
                 y=[float(pa[1]), float(pb[1])],
                 z=[float(pa[2]), float(pb[2])],
-                mode="lines+text",
+                mode="lines",
                 line=dict(color=dc, width=beam_width, dash="dot"),
-                text=["", dist_txt],
-                textfont=dict(color=dc, size=10, family="Space Mono"),
                 name="Distance",
                 showlegend=False,
             )
         else:
-            tr4 = go.Scatter3d(
+            tr2 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
@@ -2113,7 +2133,7 @@ def fig_animated_conjunction(
                 showlegend=False,
             )
 
-        return [tr0, tr1, tr2, tr3, tr4]
+        return [tr0, tr1, tr2]
 
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
@@ -2148,7 +2168,7 @@ def fig_animated_conjunction(
             dict(
                 args=[
                     [str(i)],
-                    dict(frame=dict(duration=0, redraw=True), mode="immediate"),
+                    dict(frame=dict(duration=0, redraw=False), mode="immediate"),
                 ],
                 label=lbl,
                 method="animate",
@@ -2207,7 +2227,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(n_frames)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2219,7 +2239,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 2)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2231,7 +2251,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 5)],
                             dict(
-                                frame=dict(duration=60, redraw=True),
+                                frame=dict(duration=60, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2252,7 +2272,7 @@ def fig_animated_conjunction(
                         method="animate",
                         args=[
                             [str(tca_idx)],
-                            dict(frame=dict(duration=0, redraw=True), mode="immediate"),
+                            dict(frame=dict(duration=0, redraw=False), mode="immediate"),
                         ],
                     ),
                 ],
