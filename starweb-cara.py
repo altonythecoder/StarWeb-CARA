@@ -31,7 +31,8 @@ from spacetrack import SpaceTrackClient
 try:
     ts = load.timescale()
 except Exception as e:
-    st.error(f"Skyfield timescale initialization failed: {e}")
+    # Streamlit not yet initialized, just log the error
+    print(f"Skyfield timescale initialization failed: {e}")
     ts = None
 
 def queue_simulation_pair(sat_a, sat_b, center_tt=None):
@@ -51,16 +52,17 @@ def queue_simulation_pair(sat_a, sat_b, center_tt=None):
     """
     # Guard against accidental None values (optional but helpful)
     if sat_a is None or sat_b is None:
-        st.error("Cannot queue a simulation – one of the satellites is None.")
+        print("Cannot queue a simulation – one of the satellites is None.")
         return
 
     # Save the objects and the optional centre time
-    st.session_state["sim_sat_a"] = sat_a
-    st.session_state["sim_sat_b"] = sat_b
-    st.session_state["sim_center_tt"] = center_tt
-
-    # Tell the UI to run the simulation on the next rerun
-    st.session_state["run_sim"] = True
+    try:
+        st.session_state["sim_sat_a"] = sat_a
+        st.session_state["sim_sat_b"] = sat_b
+        st.session_state["sim_center_tt"] = center_tt
+        st.session_state["run_sim"] = True
+    except Exception as e:
+        print(f"Failed to queue simulation: {e}")
 
 
 # ================================================================================
@@ -134,61 +136,99 @@ def get_group_default_mass(group_key: str) -> int:
 # ================================================================================
 def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN):
     """Build time grid for analysis using linspace for clarity."""
+    if ts is None:
+        print("Error: Timescale not initialized")
+        return None, None
     n_steps = max(1, int(window_hrs * 60 // step_min) + 1)
     offsets = np.linspace(0, (n_steps-1)*step_min, n_steps) / 1440.0
     return ts.tt_jd(start_tt + offsets), offsets
 
 
+@st.cache_data(show_spinner=False, ttl=300)  # Cache for 5 minutes
 def propagated_positions(sat, times):
     """
     Enhanced position propagation with better error handling and performance monitoring.
+    Cached for 5 minutes to improve performance.
     """
     try:
         return sat.at(times).position.km
     except Exception as e:
-        st.warning(f"Position propagation error for {sat.name}: {str(e)[:50]}")
+        # Log error without using st.warning to avoid session dependency
+        print(f"Position propagation error for {sat.name}: {str(e)[:50]}")
         return None
 
 
 def _set_mass_widget_values(mass_a: float, mass_b: float):
-    mass_a = float(max(1.0, min(mass_a, MASS_WIDGET_MAX_KG)))
-    mass_b = float(max(1.0, min(mass_b, MASS_WIDGET_MAX_KG)))
-    st.session_state["mass_a_kg"] = mass_a
-    st.session_state["mass_b_kg"] = mass_b
-    st.session_state["mass_a_input"] = mass_a
-    st.session_state["mass_b_input"] = mass_b
+    try:
+        mass_a = float(max(1.0, min(mass_a, MASS_WIDGET_MAX_KG)))
+        mass_b = float(max(1.0, min(mass_b, MASS_WIDGET_MAX_KG)))
+        # Only set session_state if streamlit is initialized
+        if hasattr(st, 'session_state'):
+            st.session_state["mass_a_kg"] = mass_a
+            st.session_state["mass_b_kg"] = mass_b
+            st.session_state["mass_a_input"] = mass_a
+            st.session_state["mass_b_input"] = mass_b
+    except Exception as e:
+        print(f"Error setting mass widget values: {e}")
 
 
 def sync_mass_a_from_input():
-    value = float(
-        max(1.0, min(st.session_state.get("mass_a_input", 1.0), MASS_WIDGET_MAX_KG))
-    )
-    st.session_state["mass_a_kg"] = value
-    st.session_state["mass_a_input"] = value
+    try:
+        if not hasattr(st, 'session_state'):
+            return  # Streamlit not initialized yet
+        value = float(
+            max(1.0, min(st.session_state.get("mass_a_input", 1.0), MASS_WIDGET_MAX_KG))
+        )
+        st.session_state["mass_a_kg"] = value
+        st.session_state["mass_a_input"] = value
+    except Exception as e:
+        print(f"Error syncing mass A: {e}")
+        # Set fallback values
+        if hasattr(st, 'session_state'):
+            st.session_state["mass_a_kg"] = 250.0
+            st.session_state["mass_a_input"] = 250.0
 
 
 def sync_mass_b_from_input():
-    value = float(
-        max(1.0, min(st.session_state.get("mass_b_input", 1.0), MASS_WIDGET_MAX_KG))
-    )
-    st.session_state["mass_b_kg"] = value
-    st.session_state["mass_b_input"] = value
+    try:
+        if not hasattr(st, 'session_state'):
+            return  # Streamlit not initialized yet
+        value = float(
+            max(1.0, min(st.session_state.get("mass_b_input", 1.0), MASS_WIDGET_MAX_KG))
+        )
+        st.session_state["mass_b_kg"] = value
+        st.session_state["mass_b_input"] = value
+    except Exception as e:
+        print(f"Error syncing mass B: {e}")
+        # Set fallback values
+        if hasattr(st, 'session_state'):
+            st.session_state["mass_b_kg"] = 250.0
+            st.session_state["mass_b_input"] = 250.0
 
 
 def sync_mass_defaults(group_key: str):
-    manual_present = "my_sat" in st.session_state
-    fleet_mass = get_group_default_mass(group_key)
-    group_changed = st.session_state.get("_mass_group_key") != group_key
-    manual_changed = st.session_state.get("_manual_mass_mode") != manual_present
+    try:
+        if not hasattr(st, 'session_state'):
+            return  # Streamlit not initialized yet
+        manual_present = "my_sat" in st.session_state
+        fleet_mass = get_group_default_mass(group_key)
+        group_changed = st.session_state.get("_mass_group_key") != group_key
+        manual_changed = st.session_state.get("_manual_mass_mode") != manual_present
 
-    if group_changed or manual_changed:
-        if manual_present:
-            _set_mass_widget_values(MANUAL_SAT_DEFAULT_MASS_KG, fleet_mass)
-        else:
-            _set_mass_widget_values(fleet_mass, fleet_mass)
+        if group_changed or manual_changed:
+            if manual_present:
+                _set_mass_widget_values(MANUAL_SAT_DEFAULT_MASS_KG, fleet_mass)
+            else:
+                _set_mass_widget_values(fleet_mass, fleet_mass)
 
-        st.session_state["_mass_group_key"] = group_key
-        st.session_state["_manual_mass_mode"] = manual_present
+            st.session_state["_mass_group_key"] = group_key
+            st.session_state["_manual_mass_mode"] = manual_present
+    except Exception as e:
+        print(f"Error syncing mass defaults: {e}")
+        # Set fallback values
+        if hasattr(st, 'session_state'):
+            st.session_state["_mass_group_key"] = group_key
+            st.session_state["_manual_mass_mode"] = False
 
 
 # ================================================================================
@@ -526,8 +566,6 @@ header[data-testid="stHeader"]{display:none !important;}
 # ================================================================================
 #  EARTH VIEW - ENHANCED WITH ERROR HANDLING
 # ================================================================================
-#  EARTH VIEW - ENHANCED WITH ERROR HANDLING
-# ================================================================================
 @st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def load_earth_texture(resolution: int = 360, style: str = "night"):
     """
@@ -610,7 +648,7 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
 
         return None
     except Exception as e:
-        st.sidebar.warning(f"Earth texture load failed: {str(e)[:50]}")
+        print(f"Earth texture load failed: {str(e)[:50]}")
         return None
 
 
@@ -646,7 +684,7 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
             return None, f"Unknown group: {group_key}"
 
         client = SpaceTrackClient(identity=username, password=password)
-        
+
         # Add timeout handling
         if config["spacetrack_mode"] == "norad":
             raw = client.gp(
@@ -766,6 +804,7 @@ def build_fallback_sat_name(tle_line_1: str, fallback_name_prefix: str = None) -
     return f"NORAD {norad_id}"
 
 
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -> list:
     sats = []
     is_3ln = not (lines[0].startswith("1 ") or lines[0].startswith("2 "))
@@ -790,6 +829,7 @@ def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -
 # ================================================================================
 #  ORBITAL ELEMENTS (from TLE)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def get_orbital_elements(sat: EarthSatellite) -> dict:
     """Extracts Kepler orbital elements from TLE."""
     try:
@@ -825,6 +865,7 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
 # ================================================================================
 #  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> list:
     """
     Apsis (Apogee-Perigee) Filter — Section 2.1
@@ -893,10 +934,12 @@ def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -
 # ================================================================================
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020) -> float:
     """
     Foster & Estes (1992) 2D-Pc Model — Section 3.1
     Enhanced with flexible parameter handling for compatibility.
+    Cached for performance improvement.
     """
     try:
         if sigma_x <= 0 or sigma_y <= 0:
@@ -917,6 +960,7 @@ def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float =
         return collision_probability_isotropic(miss_km, (sigma_x + sigma_y) / 2, hbr_km)
 
 
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def collision_probability_isotropic(
     miss_km: float, sigma_km: float, hbr_km: float = 0.020
 ) -> float:
@@ -924,6 +968,7 @@ def collision_probability_isotropic(
     Chan (1997) isotropic model — fast fallback.
     Correct formula: P(|X_rel| ≤ HBR) for x ∈ N(miss, σ)
     Pc = Φ((HBR - miss)/σ) + Φ((HBR + miss)/σ) - 1
+    Cached for performance improvement.
     """
     if sigma_km <= 0:
         return 0.0
@@ -943,11 +988,13 @@ def collision_probability(miss_km, sigma_km, hbr_km=0.020):
 # ================================================================================
 #  MAHALANOBIS DISTANCE TEST (Section 3.2 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def mahalanobis_test(miss_km: float, sigma_km: float) -> dict:
     """
     2D-Pc validity test (CARA methodology — Section 3.2).
     Mahalanobis distance Md = miss / sigma.
     Md < 1.5 → linear motion assumption breaks down → 3D-Pc required.
+    Cached for performance improvement.
     """
     if sigma_km <= 0:
         return {"Md": 999.0, "valid_2d": True, "label": "Valid"}
@@ -965,11 +1012,13 @@ def mahalanobis_test(miss_km: float, sigma_km: float) -> dict:
 # ================================================================================
 #  MAXIMUM Pc ANALYSIS (Section 4 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def max_pc_analysis(miss_km: float, hbr_km: float = 0.020) -> float:
     """
     Max Pc — Section 4 (CARA toolkit).
     Scans covariance multiplier σ to find mathematical maximum Pc.
     Worst case: σ_opt = miss / sqrt(2) (Gaussian peak point).
+    Cached for performance improvement.
     """
     sigma_opt = miss_km / math.sqrt(2.0) if miss_km > 0 else hbr_km
     return collision_probability_isotropic(miss_km, max(sigma_opt, 1e-6), hbr_km)
@@ -978,11 +1027,13 @@ def max_pc_analysis(miss_km: float, hbr_km: float = 0.020) -> float:
 # ================================================================================
 #  PROBABILITY DILUTION DETECTION (Section 4 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def dilution_check(pc: float, sigma_km: float, miss_km: float) -> dict:
     """
     Probability Dilution detection — Section 4.
     Wide covariance → small Pc → false confidence.
     Warning: sigma > 5*miss_km and pc < 1e-6
+    Cached for performance improvement.
     """
     diluted = (sigma_km > 5.0 * miss_km) and (pc < 1e-6) and (miss_km < 100.0)
     if diluted:
@@ -997,6 +1048,7 @@ def dilution_check(pc: float, sigma_km: float, miss_km: float) -> dict:
 # ================================================================================
 #  FRAGMENTATION PROBABILITY Pf (Section 4 — Thesis)
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def fragmentation_probability(
     rel_vel_km_s: float, mass_a_kg: float = 250.0, mass_b_kg: float = 250.0
 ) -> dict:
@@ -1006,6 +1058,7 @@ def fragmentation_probability(
     Specific Energy: E_c = 0.5 * m_b * v_rel^2 / m_a  (J/g)
     E_c > 40 J/g → Catastrophic fragmentation (Kessler contribution)
     E_c > 0 J/g  → Damaging
+    Cached for performance improvement.
     """
     v_ms = rel_vel_km_s * 1000.0
     E_c = 0.5 * mass_b_kg * v_ms**2 / (mass_a_kg * 1000.0)  # J/g
@@ -1038,6 +1091,7 @@ def fragmentation_probability(
 # ================================================================================
 #  RISK LEVEL
 # ================================================================================
+@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def risk_level(pc: float) -> tuple:
     """NASA STD-8719.14 — 4-tier risk classification with enhanced error handling."""
     try:
@@ -1064,9 +1118,18 @@ def _compute_conjunction_metrics(
     """
     Core function to compute conjunction metrics for a satellite pair.
     Extracted to eliminate code duplication between compute_conjunctions and compute_conjunctions_custom.
+    Optimized with early returns and error handling.
     """
+    # Validate inputs
+    if pos1 is None or pos2 is None or sat1 is None or sat2 is None:
+        return None
+
     # Compute distance array
-    dists = np.linalg.norm(pos1 - pos2, axis=0)
+    try:
+        dists = np.linalg.norm(pos1 - pos2, axis=0)
+    except Exception:
+        return None
+
     if len(dists) == 0 or np.all(np.isnan(dists)):
         return None
 
@@ -1134,8 +1197,16 @@ def compute_conjunctions(
     Enhanced Apsis filter + 5-min step TCA scan + multiple Pc metrics with progress tracking.
     Returns: (df_results, n_apsis_filtered, n_total_pairs)
     """
+    if ts is None:
+        print("Error: Timescale not initialized")
+        return pd.DataFrame(), 0, 0
+
     now = ts.now()
     times, _ = build_time_grid(now.tt, window_hrs)
+    if times is None:
+        print("Error: Failed to build time grid")
+        return pd.DataFrame(), 0, 0
+
     jd_values = np.asarray(times.tt)
     n_total = len(sats) * (len(sats) - 1) // 2
 
@@ -1145,11 +1216,11 @@ def compute_conjunctions(
     else:
         progress_bar = None
 
-    # Apsis pre-filter
+    # Apsis pre-filter (cached)
     candidate_pairs = apsis_filter(sats, threshold_km=APSIS_FILTER_THRESHOLD_KM)
     n_filtered = n_total - len(candidate_pairs)
-    
-    # Position caching for performance
+
+    # Position caching for performance (cached)
     positions_by_id = {}
     for idx, sat in enumerate(sats):
         if progress_bar and idx % max(1, len(sats)//20) == 0:  # Update less frequently
@@ -1163,11 +1234,11 @@ def compute_conjunctions(
             progress = (idx + 1) / len(candidate_pairs)
             if idx % max(1, len(candidate_pairs)//20) == 0:  # Update less frequently
                 progress_bar.progress(progress, text=f"Analyzing conjunctions... {idx+1}/{len(candidate_pairs)}")
-        
+
         # Retrieve precomputed data
         sat1_obj, pos1 = positions_by_id.get(id(sat1), (None, None))
         sat2_obj, pos2 = positions_by_id.get(id(sat2), (None, None))
-        
+
         if pos1 is None or pos2 is None or sat1_obj is None or sat2_obj is None:
             continue
 
@@ -1198,8 +1269,16 @@ def compute_conjunctions_custom(
     Compares user's own satellite with existing satellite fleet.
     Apsis filter + 5-min TCA scan + full Pc metrics.
     """
+    if ts is None:
+        print("Error: Timescale not initialized")
+        return pd.DataFrame()
+
     now = ts.now()
     times, _ = build_time_grid(now.tt, window_hrs)
+    if times is None:
+        print("Error: Failed to build time grid")
+        return pd.DataFrame()
+
     jd_values = np.asarray(times.tt)
     R_E, GM = EARTH_RADIUS_KM, MU_EARTH_KM3_S2
 
@@ -1213,7 +1292,7 @@ def compute_conjunctions_custom(
             return 0.0, 10000.0
 
     my_q, my_Q = apsis(my_sat)
-    my_pos = propagated_positions(my_sat, times)
+    my_pos = propagated_positions(my_sat, times)  # Cached
     results = []
     if my_pos is None:
         return pd.DataFrame(results)
@@ -1227,13 +1306,13 @@ def compute_conjunctions_custom(
         if max(my_q, q) > min(my_Q, Q) + 100.0:  # Note: Using 100.0 here as in original (intentional for custom?)
             continue
 
-        sat_pos = propagated_positions(sat, times)
+        sat_pos = propagated_positions(sat, times)  # Cached
         if sat_pos is None:
             continue
 
         # Compute metrics using helper function
         result = _compute_conjunction_metrics(
-            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_kg, mass_a_kg, mass_b_kg
+            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
         )
         if result:
             results.append(result)
@@ -1515,6 +1594,7 @@ def fig_ground_tracks(sats):
     return fig
 
 
+@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
     step_m = ANALYSIS_STEP_MIN
     t_axis = np.arange(len(dist_arr)) * step_m / 60.0
@@ -1584,6 +1664,7 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
     return fig
 
 
+@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_risk_gauge(pc: float):
     sev, color = risk_level(pc)
     fig = go.Figure(
@@ -1621,6 +1702,7 @@ def fig_risk_gauge(pc: float):
     return fig
 
 
+@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_orbital_elements_radar(elems_list):
     """Display satellites by orbital elements using scatter plot."""
     fig = go.Figure()
@@ -1685,6 +1767,7 @@ def fig_orbital_elements_radar(elems_list):
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
 
+@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_animated_conjunction(
     sat_a,
     sat_b,
@@ -1698,7 +1781,12 @@ def fig_animated_conjunction(
     Robust version with error handling and fallback.
     Precomputed star field for performance.
     Fixed syntax error: lighting dict now properly closed with ) instead of }
+    Cached for performance improvement.
     """
+    if ts is None:
+        print("Error: Timescale not initialized")
+        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([0.0]), 0.0
+
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
     # max_frames=50: paylaşılan/düşük güçlü makinelerde (jüri sunumu vb.)
@@ -3183,7 +3271,7 @@ with tab4:
                 st.session_state.sel_a = sel_a
                 st.session_state.sel_b = sel_b
                 st.session_state.window_hrs = sim_hrs
-                st.experimental_rerun()  # anlık UI güncellemesi
+                st.rerun()  # anlık UI güncellemesi
 
     with btn_col2:
         if st.button(
@@ -3193,7 +3281,7 @@ with tab4:
             use_container_width=True,
         ):
             st.session_state.run_sim = False
-            st.experimental_rerun()
+            st.rerun()
 
     with btn_col3:
         st.caption(
@@ -3211,31 +3299,23 @@ with tab4:
         window_hrs = st.session_state.get("window_hrs", sim_hrs)
 
         with st.spinner("Preparing animation …"):
-            # Animasyon fonksiyonunu önbelleğe al (aynı parametreler için yeniden hesaplama yapmaz)
-            @st.cache_data(show_spinner=False)
-            def get_anim_fig(_sa, _sb, _hrs, _show_orbits, _show_tca, _center_tt):
-                return fig_animated_conjunction(
-                    _sa,
-                    _sb,
-                    window_hrs=_hrs,
-                    show_orbits=_show_orbits,
-                    show_tca=_show_tca,
-                    center_tt=_center_tt,
-                )
-
-            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = get_anim_fig(
+            # Use the main fig_animated_conjunction function which is already cached
+            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = fig_animated_conjunction(
                 sa,
                 sb,
-                window_hrs,
-                show_orbits,
-                show_tca,
-                center_tt,
+                window_hrs=window_hrs,
+                show_orbits=show_orbits,
+                show_tca=show_tca,
+                center_tt=center_tt,
             )
 
         # --------------------------------------------------------------
         #  TCA özet metrikleri
         # --------------------------------------------------------------
-        tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+        if ts is not None:
+            tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+        else:
+            tca_utc = "Unknown (timescale error)"
         sev_sim, col_sim = risk_level(
             collision_probability_isotropic(tca_d, sigma_km, hbr_km)
         )
