@@ -166,8 +166,11 @@ def _set_mass_widget_values(mass_a: float, mass_b: float):
         if hasattr(st, 'session_state'):
             st.session_state["mass_a_kg"] = mass_a
             st.session_state["mass_b_kg"] = mass_b
-            st.session_state["mass_a_input"] = mass_a
-            st.session_state["mass_b_input"] = mass_b
+            # Pop widget-bound keys so they reinitialise from mass_*_kg on the
+            # next render.  Direct assignment to a widget-bound key outside a
+            # callback raises StreamlitAPIException, so we delete them instead.
+            st.session_state.pop("mass_a_input", None)
+            st.session_state.pop("mass_b_input", None)
     except Exception as e:
         print(f"Error setting mass widget values: {e}")
 
@@ -2024,6 +2027,7 @@ def fig_animated_conjunction(
     show_orbits: bool = True,
     show_tca: bool = True,
     center_tt: float = None,
+    frame_duration: int = 60,
 ):
     """
     3D Plotly figure showing two satellites with real-time animation.
@@ -2564,7 +2568,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(n_frames)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
+                                frame=dict(duration=frame_duration, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2576,7 +2580,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 2)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
+                                frame=dict(duration=frame_duration, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2588,7 +2592,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 5)],
                             dict(
-                                frame=dict(duration=60, redraw=False),
+                                frame=dict(duration=frame_duration, redraw=False),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2901,7 +2905,7 @@ else:
         unsafe_allow_html=True,
     )
 
-window_hrs = st.sidebar.slider("Analysis window (hours)", 1, 48, 24, key="window_hrs")
+window_hrs = st.sidebar.slider("Analysis window (hours)", 1, 48, 24, key="sidebar_window_hrs")
 sigma_km = st.sidebar.select_slider(
     "Position uncertainty σ (km)",
     options=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0],
@@ -3638,14 +3642,24 @@ with tab4:
     # ------------------------------------------------------------------
     if st.session_state.get("run_sim", False):
         # Seçili uydu nesnelerini al (session_state'dan)
-        sa = st.session_state["sim_sat_a"]
-        sb = st.session_state["sim_sat_b"]
+        sa = st.session_state.get("sim_sat_a")
+        sb = st.session_state.get("sim_sat_b")
+
+        # Guard: if satellites are missing despite run_sim=True, reset gracefully
+        if sa is None or sb is None:
+            st.session_state.run_sim = False
+            st.warning("⚠️ Simulation state lost — please press START again.")
+            st.rerun()
+
         center_tt = st.session_state.get("sim_center_tt")
         # Ensure window_hrs is valid
         try:
             window_hrs = int(st.session_state.get("window_hrs", sim_hrs))
         except Exception:
             window_hrs = int(sim_hrs) if sim_hrs is not None else 24
+
+        # Compute frame duration from speed slider BEFORE building the figure
+        frame_duration_ms = max(20, int(60 / anim_speed))  # 60 ms base at 1x speed
 
         with st.spinner("Preparing animation …"):
             # Use the main fig_animated_conjunction function which is already cached
@@ -3656,6 +3670,7 @@ with tab4:
                 show_orbits=show_orbits,
                 show_tca=show_tca,
                 center_tt=center_tt,
+                frame_duration=frame_duration_ms,
             )
 
         # --------------------------------------------------------------
@@ -3686,12 +3701,7 @@ with tab4:
         st.info(
             "💡 **Camera Control:** Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view manually."
         )
-        # Animasyon hızı kontrolü: frame süresini `anim_speed` ile çarparız
         # Plotly’nin `frame.duration` parametresi milisaniye olduğundan:
-        frame_duration = int(60 / anim_speed)  # 60 ms temel süre (1x)
-        # Ancak `fig_animated_conjunction` içinde hard‑coded 60 ms kullanıyoruz;
-        # bu yüzden burada sadece kullanıcıya bilgi veriyoruz; isteğe bağlı olarak
-        # fonksiyonu `frame_duration` parametresi alacak şekilde değiştirebilirsiniz.
         st.plotly_chart(
             anim_fig,
             use_container_width=True,
