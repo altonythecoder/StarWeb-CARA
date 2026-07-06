@@ -232,9 +232,247 @@ def sync_mass_defaults(group_key: str):
 
 
 # ================================================================================
-#  CSS — ENHANCED MISSION CONTROL DARK THEME
+#  CSS — ENHANCED MISSION CONTROL DARK THEME WITH THEME SELECTOR
 # ================================================================================
-STYLE = """
+def get_theme_css(theme="dark"):
+    """Generate CSS based on selected theme"""
+    if theme == "light":
+        # Light/Professional Theme (Black & White with blue accents)
+        return """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg:#ffffff; --bg2:#f8f9fa; --bg3:#e9ecef; --border:#dee2e6;
+  --accent:#0066cc; --accent2:#004499; --warn:#ffc107; --crit:#dc3545;
+  --text:#212529; --dim:#6c757d;
+  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif; --ui:'Inter',sans-serif;
+  --gradient-primary: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+  --gradient-dark: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
+  --shadow-glow: 0 0 20px rgba(0, 102, 204, 0.1);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+/* Base Styles */
+html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
+  background:var(--bg) !important;
+  color:var(--text) !important;
+  font-family:var(--ui) !important;
+  background-image: var(--gradient-dark);
+}
+
+[data-testid="stSidebar"]{
+  background:var(--bg2) !important;
+  border-right:1px solid var(--border) !important;
+  box-shadow: var(--shadow-card);
+}
+
+[data-testid="stSidebar"] *{
+  color:var(--text) !important;
+  font-family:var(--ui) !important;
+}
+
+/* Typography */
+h1{
+  font-family:var(--sans) !important;
+  font-weight:900 !important;
+  font-size:2.2rem !important;
+  letter-spacing:.06em !important;
+  color:#000 !important;
+  text-transform:uppercase !important;
+  line-height:1.2 !important;
+  text-shadow: none;
+}
+
+h2,h3{
+  font-family:var(--sans) !important;
+  color:var(--accent) !important;
+  font-weight:700 !important;
+  letter-spacing:.08em !important;
+  text-transform:uppercase !important;
+  border-bottom:1px solid var(--border) !important;
+  padding-bottom:.4em !important;
+  margin-bottom:1em !important;
+}
+
+/* Metric Cards */
+[data-testid="metric-container"]{
+  background:var(--bg) !important;
+  border:1px solid var(--border) !important;
+  border-left:4px solid var(--accent) !important;
+  padding:16px 20px !important;
+  border-radius:8px !important;
+  box-shadow: var(--shadow-card);
+  transition: all 0.3s ease !important;
+}
+
+[data-testid="metric-container"]:hover{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+[data-testid="metric-container"] label{
+  font-family:var(--ui) !important;
+  font-size:.7rem !important;
+  letter-spacing:.12em !important;
+  color:var(--dim) !important;
+  text-transform:uppercase !important;
+  font-weight:600 !important;
+}
+
+[data-testid="metric-container"] [data-testid="stMetricValue"]{
+  font-family:var(--mono) !important;
+  color:var(--accent) !important;
+  font-size:1.8rem !important;
+  font-weight:700 !important;
+}
+
+/* Buttons */
+.stButton button{
+  background:linear-gradient(135deg, rgba(0, 102, 204, 0.1) 0%, rgba(0, 68, 153, 0.1) 100%) !important;
+  border:1px solid var(--accent) !important;
+  color:var(--accent) !important;
+  font-family:var(--ui) !important;
+  font-weight:600 !important;
+  border-radius:6px !important;
+  padding:12px 24px !important;
+  transition: all 0.3s ease !important;
+}
+
+.stButton button:hover{
+  background:var(--accent) !important;
+  color:#fff !important;
+  box-shadow: var(--shadow-glow);
+}
+
+/* Input Fields */
+.stTextInput input, .stNumberInput input, .stSelectbox select{
+  background:var(--bg) !important;
+  border:1px solid var(--border) !important;
+  color:var(--text) !important;
+  border-radius:6px !important;
+}
+
+.stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus{
+  border-color:var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1) !important;
+}
+
+/* Sliders */
+.stSlider [role="slider"]{
+  background:var(--accent) !important;
+}
+
+/* Info Panels */
+.info-panel{
+  background:var(--bg2) !important;
+  border:1px solid var(--border) !important;
+  border-left:4px solid var(--accent) !important;
+  padding:16px 20px !important;
+  border-radius:8px !important;
+  margin:16px 0 !important;
+  color:var(--text) !important;
+}
+
+.warn-panel{
+  background:var(--bg2) !important;
+  border:1px solid var(--border) !important;
+  border-left:4px solid var(--warn) !important;
+  padding:16px 20px !important;
+  border-radius:8px !important;
+  margin:16px 0 !important;
+  color:var(--text) !important;
+}
+
+.crit-panel{
+  background:var(--bg2) !important;
+  border:1px solid var(--border) !important;
+  border-left:4px solid var(--crit) !important;
+  padding:16px 20px !important;
+  border-radius:8px !important;
+  margin:16px 0 !important;
+  color:var(--text) !important;
+}
+
+/* Tabs */
+[data-testid="stTabs"] [role="tablist"]{
+  background:var(--bg2) !important;
+  border:1px solid var(--border) !important;
+  border-radius:8px !important;
+  padding:8px !important;
+}
+
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
+  background:var(--accent) !important;
+  color:#fff !important;
+  border-radius:6px !important;
+}
+
+[data-testid="stTabs"] [role="tab"][aria-selected="false"]{
+  color:var(--dim) !important;
+}
+
+/* Dataframe */
+.stDataFrame{
+  background:var(--bg) !important;
+  border:1px solid var(--border) !important;
+  border-radius:8px !important;
+}
+
+.stDataFrame table{
+  color:var(--text) !important;
+}
+
+.stDataFrame th{
+  background:var(--bg2) !important;
+  color:var(--accent) !important;
+  font-weight:600 !important;
+}
+
+.stDataFrame tr:hover{
+  background:var(--bg2) !important;
+}
+
+/* Sidebar Elements */
+[data-testid="stSidebar"] .stSlider label{
+  color:var(--text) !important;
+  font-weight:600 !important;
+}
+
+[data-testid="stSidebar"] .stSelectbox label{
+  color:var(--text) !important;
+  font-weight:600 !important;
+}
+
+/* Expander */
+[data-testid="stExpander"] {
+  background: var(--bg2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+}
+
+[data-testid="stExpander"] > div > div > svg {
+  color: var(--accent) !important;
+}
+
+/* Enhanced text area */
+[data-testid="stTextArea"] > div > div > textarea {
+  background: var(--bg) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
+}
+
+/* Hide sidebar collapse button and header */
+[data-testid="stSidebarCollapseButton"]{display:none !important;}
+header[data-testid="stHeader"]{display:none !important;}
+</style>
+"""
+    else:
+        # Original Dark Mission Control Theme
+        return """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -559,6 +797,10 @@ header[data-testid="stHeader"]{display:none !important;}
 [data-testid="stExpander"] > div > div > svg {
   color: var(--accent) !important;
 }
+
+/* Hide sidebar collapse button and header */
+[data-testid="stSidebarCollapseButton"]{display:none !important;}
+header[data-testid="stHeader"]{display:none !important;}
 </style>
 """
 
@@ -1092,19 +1334,19 @@ def fragmentation_probability(
 #  RISK LEVEL
 # ================================================================================
 @st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
-def risk_level(pc: float) -> tuple:
+def risk_level(pc: float, theme="dark") -> tuple:
     """NASA STD-8719.14 — 4-tier risk classification with enhanced error handling."""
     try:
         if pc > 1e-3:
-            return "CRITICAL", "#ff3d5c"
+            return "CRITICAL", "#dc3545" if theme == "light" else "#ff3d5c"
         elif pc > 1e-4:
-            return "HIGH", "#ff6b00"
+            return "HIGH", "#fd7e14" if theme == "light" else "#ff6b00"
         elif pc > 1e-5:
-            return "MEDIUM", "#ffb800"
+            return "MEDIUM", "#ffc107" if theme == "light" else "#ffb800"
         else:
-            return "LOW", "#00ffa8"
+            return "LOW", "#28a745" if theme == "light" else "#00ffa8"
     except Exception:
-        return "UNKNOWN", "#5a7a94"
+        return "UNKNOWN", "#6c757d" if theme == "light" else "#5a7a94"
 
 
 # ================================================================================
@@ -1113,7 +1355,7 @@ def risk_level(pc: float) -> tuple:
 #  HELPER FUNCTION FOR CONJUNCTION METRICS (EXTRACTED TO REDUCE DUPLICATION)
 # ================================================================================
 def _compute_conjunction_metrics(
-    sat1, sat2, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+    sat1, sat2, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme="dark"
 ):
     """
     Core function to compute conjunction metrics for a satellite pair.
@@ -1148,7 +1390,7 @@ def _compute_conjunction_metrics(
     mah = mahalanobis_test(min_d, sigma_km)
     dil = dilution_check(pc_iso, sigma_km, min_d)
     frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
-    sev, color = risk_level(pc_iso)
+    sev, color = risk_level(pc_iso, theme)
 
     return {
         "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
@@ -1192,6 +1434,7 @@ def compute_conjunctions(
     hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
+    theme: str = "dark"
 ) -> tuple:
     """
     Enhanced Apsis filter + 5-min step TCA scan + multiple Pc metrics with progress tracking.
@@ -1244,7 +1487,7 @@ def compute_conjunctions(
 
         # Compute metrics using helper function
         result = _compute_conjunction_metrics(
-            sat1_obj, sat2_obj, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+            sat1_obj, sat2_obj, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme
         )
         if result:
             results.append(result)
@@ -1264,6 +1507,7 @@ def compute_conjunctions_custom(
     hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
+    theme: str = "dark"
 ) -> pd.DataFrame:
     """
     Compares user's own satellite with existing satellite fleet.
@@ -1312,7 +1556,7 @@ def compute_conjunctions_custom(
 
         # Compute metrics using helper function
         result = _compute_conjunction_metrics(
-            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme
         )
         if result:
             results.append(result)
@@ -2397,7 +2641,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-st.markdown(STYLE, unsafe_allow_html=True)
+
+# Apply theme CSS
+st.markdown(get_theme_css(st.session_state.get("theme", "dark")), unsafe_allow_html=True)
 
 st.markdown(
     """
@@ -2429,17 +2675,66 @@ st.markdown(
 st.sidebar.markdown(
     """
 <div style="padding:16px 0 20px 0; border-bottom:2px solid #1e2d42; margin-bottom:20px;">
-  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem; 
+  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem;
               font-weight:700; color:#00d4ff; letter-spacing:.08em; text-transform:uppercase;
               margin-bottom:4px;">
     CONTROL PANEL
   </div>
-  <div style="font-family:'Space Mono',monospace; font-size:.65rem; 
+  <div style="font-family:'Space Mono',monospace; font-size:.65rem;
               color:#5a7a94; letter-spacing:.15em; text-transform:uppercase;">
     System Configuration
   </div>
 </div>
 """,
+    unsafe_allow_html=True,
+)
+
+# ─── THEME SELECTOR ─────────────────────────────────────────────────────────
+st.sidebar.markdown(
+    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
+    letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
+    display:flex; align-items:center; gap:8px;">
+    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
+                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">00</span>
+    THEME SELECTION</div>""",
+    unsafe_allow_html=True,
+)
+
+# Initialize theme in session state
+if "theme" not in st.session_state:
+    st.session_state.theme = "dark"
+
+# Theme selector
+theme_options = {
+    "dark": {
+        "label": "🌙 Dark Mission Control",
+        "description": "Professional dark theme with cyan accents"
+    },
+    "light": {
+        "label": "☀️ Professional Light",
+        "description": "Clean black & white theme with blue accents"
+    }
+}
+
+selected_theme = st.sidebar.selectbox(
+    "Choose Theme",
+    options=list(theme_options.keys()),
+    format_func=lambda x: theme_options[x]["label"],
+    index=0 if st.session_state.theme == "dark" else 1,
+    key="theme_selector"
+)
+
+# Update theme if changed
+if selected_theme != st.session_state.theme:
+    st.session_state.theme = selected_theme
+    st.rerun()
+
+st.sidebar.caption(theme_options[selected_theme]["description"])
+
+st.sidebar.markdown(
+    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
+                margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
 
@@ -2720,7 +3015,7 @@ with tab1:
     with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
         start_time = time.time()
         df, n_filtered, n_total = compute_conjunctions(
-            sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+            sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
         )
         computation_time = time.time() - start_time
 
@@ -2894,7 +3189,11 @@ with tab2:
             st.metric("Max Pc (Worst Case)", f"{row['Pc Max']:.3e}")
 
         # Mahalanobis test
-        mah_color = "#ff3d5c" if row["2D-Pc Valid"] != "2D-Pc Valid" else "#00ffa8"
+        theme = st.session_state.theme
+        if row["2D-Pc Valid"] != "2D-Pc Valid":
+            mah_color = "#dc3545" if theme == "light" else "#ff3d5c"
+        else:
+            mah_color = "#28a745" if theme == "light" else "#00ffa8"
         st.markdown(
             f"""<div class="info-panel">
         <b>🎯 Mahalanobis Distance Test:</b> Md = {row["Mahalanobis Md"]:.3f} —
@@ -2992,7 +3291,7 @@ with tab3:
 
         with st.spinner(f"Running conjunction analysis for {my_sat.name}..."):
             df_my = compute_conjunctions_custom(
-                my_sat, sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg
+                my_sat, sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
             )
 
         if df_my.empty:
@@ -3121,7 +3420,11 @@ with tab3:
             with pc_c[2]:
                 st.metric("Max Pc", f"{row_my['Pc Max']:.3e}")
 
-            mah_c = "#ff2b4d" if row_my["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
+            theme = st.session_state.theme
+            if row_my["2D-Pc Valid"] != "2D-Pc Valid":
+                mah_c = "#dc3545" if theme == "light" else "#ff2b4d"
+            else:
+                mah_c = "#28a745" if theme == "light" else "#00ff9d"
             st.markdown(
                 f"""<div class="info-panel">
             <b>Mahalanobis Test:</b> Md = {row_my["Mahalanobis Md"]:.3f} —
@@ -3151,13 +3454,14 @@ with tab3:
 
 
 # --------------------------------------------------------------
-#  TAB 4: LIVE SIMULATION  (YENİDEN TASARLANMIŞ)
+#  TAB 4: LIVE SIMULATION  (PROFESSIONAL YENİDEN TASARIM)
 # --------------------------------------------------------------
 with tab4:
-    st.markdown("## Live 3D Orbit Simulation")
+    st.markdown("## 🚀 Live 3D Orbit Simulation")
     st.markdown(
         """
         <div class="info-panel">
+            <b>🔬 Professional Conjunction Visualization</b><br>
             Watch the encounter between two satellites with <b>real‑time</b> animation.
             Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
         </div>
@@ -3193,20 +3497,32 @@ with tab4:
     default_b = st.session_state.get("sel_b", sat_names_ext[1] if len(sat_names_ext) > 1 else "")
 
     # ------------------------------------------------------------------
-    #  Kontrol paneli
+    #  Profesyonel Kontrol Paneli
     # ------------------------------------------------------------------
+    st.markdown(
+        """
+        <div style="font-family:'Space Mono',monospace;font-size:.7rem;
+        letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
+        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
+        display:flex; align-items:center; gap:8px;">
+        <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
+                     color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">🎮</span>
+        SIMULATION CONTROLS</div>""",
+        unsafe_allow_html=True,
+    )
+
     with st.container(border=True):
         c1, c2, c3 = st.columns([2, 2, 1])
         with c1:
             sel_a = st.selectbox(
-                "Satellite A",
+                "🛰️ Satellite A",
                 sat_names_ext,
                 index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
                 key="live_sel_a",
             )
         with c2:
             sel_b = st.selectbox(
-                "Satellite B",
+                "🛰️ Satellite B",
                 sat_names_ext,
                 index=sat_names_ext.index(default_b)
                 if default_b in sat_names_ext
@@ -3215,7 +3531,7 @@ with tab4:
             )
         with c3:
             sim_hrs = st.slider(
-                "Window (hours)",
+                "⏱️ Window (hours)",
                 1,
                 48,
                 min(st.session_state.get("window_hrs", window_hrs), 48),
@@ -3223,23 +3539,23 @@ with tab4:
             )
 
         # Görünüm seçenekleri (expander içinde)
-        with st.expander("⚙️ Görünüm Seçenekleri", expanded=False):
+        with st.expander("⚙️ Advanced Display Options", expanded=False):
             opt1, opt2 = st.columns(2)
             with opt1:
                 show_orbits = st.checkbox(
-                    "Show Orbit Trails",
+                    "🔵 Show Orbit Trails",
                     value=True,
                     key="live_show_orbits",
                 )
             with opt2:
                 show_tca = st.checkbox(
-                    "Show TCA Marker",
+                    "🎯 Show TCA Marker",
                     value=True,
                     key="live_show_tca",
                 )
             # Hız kontrolü (opsiyonel)
             anim_speed = st.slider(
-                "Playback speed",
+                "🎬 Playback Speed",
                 0.5,
                 2.0,
                 1.0,
@@ -3249,19 +3565,19 @@ with tab4:
             )
 
     # ------------------------------------------------------------------
-    #  Başlat / Durdur butonları
+    #  Profesyonel Başlat / Durdur Butonları
     # ------------------------------------------------------------------
     btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
     with btn_col1:
         start_disabled = st.session_state.run_sim or (sel_a == sel_b)
         if st.button(
-            "▶ START SIMULATION",
+            "🚀 START SIMULATION",
             disabled=start_disabled,
             key="live_start_btn",
             use_container_width=True,
         ):
             if sel_a == sel_b:
-                st.warning("Please select two different satellites.")
+                st.warning("⚠️ Please select two different satellites.")
             else:
                 sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
                 sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
@@ -3275,7 +3591,7 @@ with tab4:
 
     with btn_col2:
         if st.button(
-            "⏸ STOP",
+            "⏹️ STOP SIMULATION",
             disabled=not st.session_state.run_sim,
             key="live_stop_btn",
             use_container_width=True,
@@ -3285,7 +3601,7 @@ with tab4:
 
     with btn_col3:
         st.caption(
-            "ℹ️ Use **STOP** to pause the animation, then drag the slider or rotate the view manually."
+            "💡 **Tip:** Use **STOP** to pause the animation, then drag the slider or rotate the view manually."
         )
 
     # ------------------------------------------------------------------
@@ -3335,7 +3651,7 @@ with tab4:
         #  3D animasyon
         # --------------------------------------------------------------
         st.info(
-            "ℹ️ Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view."
+            "💡 **Camera Control:** Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view manually."
         )
         # Animasyon hızı kontrolü: frame süresini `anim_speed` ile çarparız
         # Plotly’nin `frame.duration` parametresi milisaniye olduğundan:
@@ -3353,7 +3669,7 @@ with tab4:
         # --------------------------------------------------------------
         #  Distance profile (statistik)
         # --------------------------------------------------------------
-        st.markdown("**Distance Profile (Full Window)**")
+        st.markdown("**📊 Distance Profile (Full Window)**")
         t_ax = (jd_arr - jd_arr[0]) * 24.0
         fig_dp_sim = go.Figure()
         fig_dp_sim.add_hline(
@@ -3595,7 +3911,7 @@ with tab7:
     and maneuver rate for space vehicles. <i>NASA Technical Memorandum.</i><br>
     Chan, F.K. (1997). <i>Spacecraft Collision Probability.</i> The Aerospace Press.<br>
     Hoots, F.R. &amp; Roehrich, R.L. (1980). <i>Models for Propagation of NORAD Element Sets.</i>
-    Spacetrack Report No. 3.<br>
+    Spacetrack Reporst No. 3.<br>
     NASA (2023). <i>Spacecraft Conjunction Assessment and Collision Avoidance Best Practices Handbook.</i>
     CARA Handbook Rev. 1.<br>
     NASA (2011). <i>Process for Limiting Orbital Debris.</i> NASA-STD-8719.14A.<br>
