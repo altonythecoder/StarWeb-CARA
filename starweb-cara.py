@@ -3485,6 +3485,12 @@ with tab4:
         st.session_state.sim_sat_b = None
     if "sim_center_tt" not in st.session_state:
         st.session_state.sim_center_tt = None
+    if "window_hrs" not in st.session_state:
+        st.session_state.window_hrs = 24
+    if "sel_a" not in st.session_state:
+        st.session_state.sel_a = None
+    if "sel_b" not in st.session_state:
+        st.session_state.sel_b = None
 
     # ------------------------------------------------------------------
     #  Uydu seçimi (sidebar yerine burada tutarlı bir UI)
@@ -3498,8 +3504,19 @@ with tab4:
         all_sats_ext = sats
 
     # Önceki seçimleri tutalım (sayfa yenilenince sıfırlanmasın)
-    default_a = st.session_state.get("sel_a", sat_names_ext[0] if sat_names_ext else "")
-    default_b = st.session_state.get("sel_b", sat_names_ext[1] if len(sat_names_ext) > 1 else "")
+    default_a = st.session_state.get("sel_a")
+    if default_a and default_a in sat_names_ext:
+        # Valid existing selection
+        pass
+    else:
+        default_a = sat_names_ext[0] if sat_names_ext else ""
+
+    default_b = st.session_state.get("sel_b")
+    if default_b and default_b in sat_names_ext:
+        # Valid existing selection
+        pass
+    else:
+        default_b = sat_names_ext[1] if len(sat_names_ext) > 1 else sat_names_ext[0] if sat_names_ext else ""
 
     # ------------------------------------------------------------------
     #  Profesyonel Kontrol Paneli
@@ -3542,6 +3559,9 @@ with tab4:
                 min(st.session_state.get("window_hrs", window_hrs), 48),
                 key="live_window_hrs",
             )
+            # Ensure sim_hrs is a valid integer
+            if sim_hrs is None:
+                sim_hrs = window_hrs
 
         # Görünüm seçenekleri (expander içinde)
         with st.expander("⚙️ Advanced Display Options", expanded=False):
@@ -3591,7 +3611,11 @@ with tab4:
                 st.session_state.run_sim = True
                 st.session_state.sel_a = sel_a
                 st.session_state.sel_b = sel_b
-                st.session_state.window_hrs = sim_hrs
+                # Ensure sim_hrs is valid before assignment
+                try:
+                    st.session_state.window_hrs = int(sim_hrs) if sim_hrs is not None else 24
+                except Exception:
+                    st.session_state.window_hrs = 24
                 st.rerun()  # anlık UI güncellemesi
 
     with btn_col2:
@@ -3617,7 +3641,11 @@ with tab4:
         sa = st.session_state["sim_sat_a"]
         sb = st.session_state["sim_sat_b"]
         center_tt = st.session_state.get("sim_center_tt")
-        window_hrs = st.session_state.get("window_hrs", sim_hrs)
+        # Ensure window_hrs is valid
+        try:
+            window_hrs = int(st.session_state.get("window_hrs", sim_hrs))
+        except Exception:
+            window_hrs = int(sim_hrs) if sim_hrs is not None else 24
 
         with st.spinner("Preparing animation …"):
             # Use the main fig_animated_conjunction function which is already cached
