@@ -144,11 +144,11 @@ def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_S
     return ts.tt_jd(start_tt + offsets), offsets
 
 
-@st.cache_data(show_spinner=False, ttl=300)  # Cache for 5 minutes
 def propagated_positions(sat, times):
     """
     Enhanced position propagation with better error handling and performance monitoring.
-    Cached for 5 minutes to improve performance.
+    Note: Not cached because EarthSatellite objects are not serializable.
+    The expensive computations (conjunction analysis) are cached instead.
     """
     try:
         return sat.at(times).position.km
@@ -1046,8 +1046,12 @@ def build_fallback_sat_name(tle_line_1: str, fallback_name_prefix: str = None) -
     return f"NORAD {norad_id}"
 
 
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -> list:
+    """
+    Parse TLE lines into EarthSatellite objects.
+    Note: Not cached because EarthSatellite objects are not serializable.
+    The heavy computations (position propagation, conjunction analysis) are cached instead.
+    """
     sats = []
     is_3ln = not (lines[0].startswith("1 ") or lines[0].startswith("2 "))
     step = 3 if is_3ln else 2
@@ -1071,9 +1075,11 @@ def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -
 # ================================================================================
 #  ORBITAL ELEMENTS (from TLE)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def get_orbital_elements(sat: EarthSatellite) -> dict:
-    """Extracts Kepler orbital elements from TLE."""
+    """
+    Extracts Kepler orbital elements from TLE.
+    Note: Not cached because EarthSatellite objects are not serializable.
+    """
     try:
         model = sat.model
         # Elements from TLE epoch
@@ -1107,13 +1113,13 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
 # ================================================================================
 #  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> list:
     """
     Apsis (Apogee-Perigee) Filter — Section 2.1
     Reduces O(N^2) complexity by filtering pairs with non-overlapping
     altitude bands.
     q1 > Q2 + D   →   physical intersection impossible → filtered
+    Note: Not cached because EarthSatellite objects are not serializable.
     """
     R_E = EARTH_RADIUS_KM
     GM = MU_EARTH_KM3_S2
@@ -2011,7 +2017,6 @@ def fig_orbital_elements_radar(elems_list):
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
 
-@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_animated_conjunction(
     sat_a,
     sat_b,
@@ -2025,7 +2030,7 @@ def fig_animated_conjunction(
     Robust version with error handling and fallback.
     Precomputed star field for performance.
     Fixed syntax error: lighting dict now properly closed with ) instead of }
-    Cached for performance improvement.
+    Note: Not cached because EarthSatellite objects are not serializable.
     """
     if ts is None:
         print("Error: Timescale not initialized")
