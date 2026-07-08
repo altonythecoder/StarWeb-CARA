@@ -25,6 +25,29 @@ try:
 except Exception:
     progress_bar = None
 
+except Exception:
+    return 0.0, 2000.0   # 2000 km üzeri LEO dışı sayılır
+
+raw_lines = raw.strip().split("\n")
+if len(raw_lines) > sat_limit * 2:
+    raw_lines = raw_lines[:sat_limit * 2]
+
+sim_hrs = st.slider(...)
+if sim_hrs is None:
+    sim_hrs = window_hrs
+st.session_state.window_hrs = int(sim_hrs)
+
+if tca_idx < 0 or tca_idx >= n_frames:
+    tca_idx = 0
+
+n_dynamic = 3  # sabit
+
+@st.cache_resource
+def get_timescale():
+    return load.timescale()
+
+
+
 # ================================================================================
 #  TIMESCALE INIT & SIMULATION QUEUE HELPER
 # ================================================================================
