@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from io import BytesIO
 from itertools import combinations
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -982,45 +983,29 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
 
 
 def fetch_celestrak_tles(group_key: str, sat_limit: int):
-    """
-    Enhanced CelesTrak TLE fetching with better error handling and performance.
-    """
     try:
         config = GROUP_CONFIG.get(group_key)
         if not config:
             return None, f"Unknown group: {group_key}"
-
         celestrak_group = config["celestrak_group"]
         url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group}&FORMAT=TLE"
         headers = {"User-Agent": "Mozilla/5.0 (StarWeb-CARA/1.0)"}
-
-        # Add retry logic for better reliability
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                try:
-                    resp = requests.get(url, headers=headers, timeout=30)
-                    resp.raise_for_status()
-                    break
-                except requests.exceptions.RequestException as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    time.sleep(2**attempt)  # Exponential backoff
-                return lines, "Veri Space-Track üzerinden alındı."
-            except Exception as e:
+                resp = requests.get(url, headers=headers, timeout=30)
+                resp.raise_for_status()
+                break
+            except requests.exceptions.RequestException:
                 if attempt == max_retries - 1:
-                    # hata mesajını döndür
-                    return None, f"Space-Track hatası: {str(e)[:100]}"
-                time.sleep(2**attempt)  # üstel bekleme
-
+                    raise
+                time.sleep(2**attempt)
         raw = resp.text
         if not raw or not raw.strip():
             return None, f"CelesTrak üzerinde '{group_key}' için veri bulunamadı."
-
         lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
         if len(lines) < 2:
             return None, "CelesTrak geçerli TLE döndürmedi."
-
         lines = trim_tle_lines(lines, sat_limit)
         return lines, "Veri CelesTrak üzerinden alındı."
     except requests.exceptions.Timeout:
@@ -1159,9 +1144,8 @@ def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) ->
             else:
                 # Fallback for satellites without model attributes
                 return 0.0, 10000.0
-        except Exception as e:
-            # Enhanced error logging
-            return 0.0, 10000.0
+                except Exception:
+                    return 0.0, 2000.0   # 2000 km üzeri LEO sayılmaz, filtre dışı kalır
 
     passed = []
     for s1, s2 in combinations(sats, 2):
@@ -2761,52 +2745,6 @@ st.sidebar.markdown(
   </div>
 </div>
 """,
-    unsafe_allow_html=True,
-)
-
-# ─── THEME SELECTOR ─────────────────────────────────────────────────────────
-st.sidebar.markdown(
-    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
-    font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
-    THEME SELECTION</div>""",
-    unsafe_allow_html=True,
-)
-
-# Initialize theme in session state
-if "theme" not in st.session_state:
-    st.session_state.theme = "dark"
-
-# Theme selector
-theme_options = {
-    "dark": {
-        "label": "🌙 Dark Mission Control",
-        "description": "Professional dark theme with cyan accents",
-    },
-    "light": {
-        "label": "☀️ Professional Light",
-        "description": "Clean black & white theme with blue accents",
-    },
-}
-
-selected_theme = st.sidebar.selectbox(
-    "Choose Theme",
-    options=list(theme_options.keys()),
-    format_func=lambda x: theme_options[x]["label"],
-    index=0 if st.session_state.theme == "dark" else 1,
-    key="theme_selector",
-)
-
-# Update theme if changed
-if selected_theme != st.session_state.theme:
-    st.session_state.theme = selected_theme
-    st.rerun()
-
-st.sidebar.caption(theme_options[selected_theme]["description"])
-
-st.sidebar.markdown(
-    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
-                margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
 
