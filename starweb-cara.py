@@ -1,13 +1,9 @@
-# StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
-# Starlink & OneWeb Megaconstellations — Thesis Project
-# Altay ÇAVUŞ — Space Sciences and Technologies, ÇOMÜ (2026)
-
+# Thesis version accompanying Altay ÇAVUŞ - StarWeb-CARA (2026)
 import math
-import time
 from datetime import datetime, timezone
-from functools import lru_cache
 from io import BytesIO
 from itertools import combinations
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -16,810 +12,97 @@ import spacetrack.operators as op
 import streamlit as st
 from PIL import Image
 from scipy.integrate import dblquad
-from scipy.stats import norm
+from scipy.stats import chi2, norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
-# ================================================================================
-#  TIMESCALE INIT & SIMULATION QUEUE HELPER
-# ================================================================================
-# Skyfield zaman ölçeği — orijinal tek-dosya sürümde dosyanın en başında
-# (importlardan hemen sonra) global olarak bir kez oluşturuluyordu.
-# Burada module-level'da tutuluyor, tüm modüller buradan import ediyor.
-
-
-@st.cache_resource
-def get_timescale():
-    return load.timescale()
-
-
-try:
-    ts = get_timescale()
-except Exception as e:
-    print(f"Skyfield timescale initialization failed: {e}")
-    ts = None
-
-
-def queue_simulation_pair(sat_a, sat_b, center_tt=None):
-    """
-    Store the selected satellite pair (and an optional TCA centre time)
-    in session state so that the Live‑Simulation tab can pick it up
-    and start the animation.
-
-    Parameters
-    ----------
-    sat_a, sat_b : EarthSatellite
-        The two satellites whose encounter you want to visualise.
-    center_tt : float, optional
-        Skyfield TT timestamp that should be used as the centre of the
-        simulation window (e.g. the TCA time).  If None, the simulation
-        will start at the current time.
-    """
-    # Guard against accidental None values (optional but helpful)
-    if sat_a is None or sat_b is None:
-        print("Cannot queue a simulation – one of the satellites is None.")
-        return
-
-    # Save the objects and the optional centre time
-    try:
-        st.session_state["sim_sat_a"] = sat_a
-        st.session_state["sim_sat_b"] = sat_b
-        st.session_state["sim_center_tt"] = center_tt
-        st.session_state["run_sim"] = True
-    except Exception as e:
-        print(f"Failed to queue simulation: {e}")
-
-
-# ================================================================================
-#  CONSTANTS AND CONFIGURATION
-# ================================================================================
-
-MANUAL_SAT_DEFAULT_MASS_KG = 250
-MASS_WIDGET_MAX_KG = 500_000.0
-EARTH_RADIUS_KM = 6371.0
-MU_EARTH_KM3_S2 = 398600.4418
-ANALYSIS_STEP_MIN = 5
-CONJUNCTION_DISTANCE_THRESHOLD_KM = 500.0
-APSIS_FILTER_THRESHOLD_KM = 50.0  # Fixed threshold for apsis filter
-
+ts = load.timescale()
 GROUP_CONFIG = {
     "STARLINK": {
         "label": "STARLINK",
         "spacetrack_mode": "name",
         "spacetrack_value": "STARLINK",
         "celestrak_group": "starlink",
-        "default_mass_kg": 250,
     },
     "ONEWEB": {
         "label": "ONEWEB",
         "spacetrack_mode": "name",
         "spacetrack_value": "ONEWEB",
         "celestrak_group": "oneweb",
-        "default_mass_kg": 150,
     },
     "ISS": {
         "label": "ISS",
         "spacetrack_mode": "norad",
         "spacetrack_value": 25544,
         "celestrak_group": "stations",
-        "default_mass_kg": 419725,
-    },
-    "KUIPER": {
-        "label": "KUIPER",
-        "spacetrack_mode": "name",
-        "spacetrack_value": "KUIPER",
-        "celestrak_group": "kuiper",
-        "default_mass_kg": 630,
-    },
-    "IRIDIUM-NEXT": {
-        "label": "IRIDIUM NEXT",
-        "spacetrack_mode": "name",
-        "spacetrack_value": "IRIDIUM",
-        "celestrak_group": "iridium-NEXT",
-        "default_mass_kg": 860,
-    },
-    "PLANET": {
-        "label": "PLANET",
-        "spacetrack_mode": "name",
-        "spacetrack_value": "PLANET",
-        "celestrak_group": "planet",
-        "default_mass_kg": 5,
     },
 }
 
-
-def get_group_default_mass(group_key: str) -> int:
-    return int(GROUP_CONFIG.get(group_key, {}).get("default_mass_kg", 250))
-
-
 # ================================================================================
-#  TIME AND ORBITAL HELPERS
+#  CSS — MISSION CONTROL DARK THEME
 # ================================================================================
-def build_time_grid(
-    start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN
-):
-    """Build time grid for analysis using linspace for clarity."""
-    if ts is None:
-        print("Error: Timescale not initialized")
-        return None, None
-    n_steps = max(1, int(window_hrs * 60 // step_min) + 1)
-    offsets = np.linspace(0, (n_steps - 1) * step_min, n_steps) / 1440.0
-    return ts.tt_jd(start_tt + offsets), offsets
-
-
-def propagated_positions(sat, times):
-    """
-    Enhanced position propagation with better error handling and performance monitoring.
-    Note: Not cached because EarthSatellite objects are not serializable.
-    The expensive computations (conjunction analysis) are cached instead.
-    """
-    try:
-        return sat.at(times).position.km
-    except Exception as e:
-        # Log error without using st.warning to avoid session dependency
-        print(f"Position propagation error for {sat.name}: {str(e)[:50]}")
-        return None
-
-
-def _set_mass_widget_values(mass_a: float, mass_b: float):
-    try:
-        mass_a = float(max(1.0, min(mass_a, MASS_WIDGET_MAX_KG)))
-        mass_b = float(max(1.0, min(mass_b, MASS_WIDGET_MAX_KG)))
-        # Only set session_state if streamlit is initialized
-        if hasattr(st, "session_state"):
-            st.session_state["mass_a_kg"] = mass_a
-            st.session_state["mass_b_kg"] = mass_b
-            # Pop widget-bound keys so they reinitialise from mass_*_kg on the
-            # next render.  Direct assignment to a widget-bound key outside a
-            # callback raises StreamlitAPIException, so we delete them instead.
-            st.session_state.pop("mass_a_input", None)
-            st.session_state.pop("mass_b_input", None)
-    except Exception as e:
-        print(f"Error setting mass widget values: {e}")
-
-
-def sync_mass_a_from_input():
-    try:
-        if not hasattr(st, "session_state"):
-            return  # Streamlit not initialized yet
-        value = float(
-            max(1.0, min(st.session_state.get("mass_a_input", 1.0), MASS_WIDGET_MAX_KG))
-        )
-        st.session_state["mass_a_kg"] = value
-        st.session_state["mass_a_input"] = value
-    except Exception as e:
-        print(f"Error syncing mass A: {e}")
-        # Set fallback values
-        if hasattr(st, "session_state"):
-            st.session_state["mass_a_kg"] = 250.0
-            st.session_state["mass_a_input"] = 250.0
-
-
-def sync_mass_b_from_input():
-    try:
-        if not hasattr(st, "session_state"):
-            return  # Streamlit not initialized yet
-        value = float(
-            max(1.0, min(st.session_state.get("mass_b_input", 1.0), MASS_WIDGET_MAX_KG))
-        )
-        st.session_state["mass_b_kg"] = value
-        st.session_state["mass_b_input"] = value
-    except Exception as e:
-        print(f"Error syncing mass B: {e}")
-        # Set fallback values
-        if hasattr(st, "session_state"):
-            st.session_state["mass_b_kg"] = 250.0
-            st.session_state["mass_b_input"] = 250.0
-
-
-def sync_mass_defaults(group_key: str):
-    try:
-        if not hasattr(st, "session_state"):
-            return  # Streamlit not initialized yet
-        manual_present = "my_sat" in st.session_state
-        fleet_mass = get_group_default_mass(group_key)
-        group_changed = st.session_state.get("_mass_group_key") != group_key
-        manual_changed = st.session_state.get("_manual_mass_mode") != manual_present
-
-        if group_changed or manual_changed:
-            if manual_present:
-                _set_mass_widget_values(MANUAL_SAT_DEFAULT_MASS_KG, fleet_mass)
-            else:
-                _set_mass_widget_values(fleet_mass, fleet_mass)
-
-            st.session_state["_mass_group_key"] = group_key
-            st.session_state["_manual_mass_mode"] = manual_present
-    except Exception as e:
-        print(f"Error syncing mass defaults: {e}")
-        # Set fallback values
-        if hasattr(st, "session_state"):
-            st.session_state["_mass_group_key"] = group_key
-            st.session_state["_manual_mass_mode"] = False
-
-
-# ================================================================================
-#  CSS — ENHANCED MISSION CONTROL DARK THEME WITH THEME SELECTOR
-# ================================================================================
-def get_theme_css(theme="dark"):
-    """Generate CSS based on selected theme"""
-    if theme == "light":
-        # Light/Professional Theme (Black & White with blue accents)
-        return """
+STYLE = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 :root {
-  --bg:#ffffff; --bg2:#f8f9fa; --bg3:#e9ecef; --border:#dee2e6;
-  --accent:#0066cc; --accent2:#004499; --warn:#ffc107; --crit:#dc3545;
-  --text:#212529; --dim:#6c757d;
-  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif; --ui:'Inter',sans-serif;
-  --gradient-primary: linear-gradient(135deg, #0066cc 0%, #004499 100%);
-  --gradient-dark: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
-  --shadow-glow: 0 0 20px rgba(0, 102, 204, 0.1);
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --bg:#07090f; --bg2:#0c1018; --bg3:#131b28; --border:#1a2740;
+  --accent:#00c8ff; --accent2:#00ff9d; --warn:#ffaa00; --crit:#ff2b4d;
+  --text:#b8cfe0; --dim:#4a6880;
+  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif;
 }
-
-/* Base Styles */
-html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
-  background:var(--bg) !important;
-  color:var(--text) !important;
-  font-family:var(--ui) !important;
-  background-image: var(--gradient-dark);
-}
-
-[data-testid="stSidebar"]{
-  background:var(--bg2) !important;
-  border-right:1px solid var(--border) !important;
-  box-shadow: var(--shadow-card);
-}
-
-[data-testid="stSidebar"] *{
-  color:var(--text) !important;
-  font-family:var(--ui) !important;
-}
-
-/* Typography */
-h1{
-  font-family:var(--sans) !important;
-  font-weight:900 !important;
-  font-size:2.2rem !important;
-  letter-spacing:.06em !important;
-  color:#000 !important;
-  text-transform:uppercase !important;
-  line-height:1.2 !important;
-  text-shadow: none;
-}
-
-h2,h3{
-  font-family:var(--sans) !important;
-  color:var(--accent) !important;
-  font-weight:700 !important;
-  letter-spacing:.08em !important;
-  text-transform:uppercase !important;
-  border-bottom:1px solid var(--border) !important;
-  padding-bottom:.4em !important;
-  margin-bottom:1em !important;
-}
-
-/* Metric Cards */
-[data-testid="metric-container"]{
-  background:var(--bg) !important;
-  border:1px solid var(--border) !important;
-  border-left:4px solid var(--accent) !important;
-  padding:16px 20px !important;
-  border-radius:8px !important;
-  box-shadow: var(--shadow-card);
-  transition: all 0.3s ease !important;
-}
-
-[data-testid="metric-container"]:hover{
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
-}
-
-[data-testid="metric-container"] label{
-  font-family:var(--ui) !important;
-  font-size:.7rem !important;
-  letter-spacing:.12em !important;
-  color:var(--dim) !important;
-  text-transform:uppercase !important;
-  font-weight:600 !important;
-}
-
-[data-testid="metric-container"] [data-testid="stMetricValue"]{
-  font-family:var(--mono) !important;
-  color:var(--accent) !important;
-  font-size:1.8rem !important;
-  font-weight:700 !important;
-}
-
-/* Buttons */
-.stButton button{
-  background:linear-gradient(135deg, rgba(0, 102, 204, 0.1) 0%, rgba(0, 68, 153, 0.1) 100%) !important;
-  border:1px solid var(--accent) !important;
-  color:var(--accent) !important;
-  font-family:var(--ui) !important;
-  font-weight:600 !important;
-  border-radius:6px !important;
-  padding:12px 24px !important;
-  transition: all 0.3s ease !important;
-}
-
-.stButton button:hover{
-  background:var(--accent) !important;
-  color:#fff !important;
-  box-shadow: var(--shadow-glow);
-}
-
-/* Input Fields */
-.stTextInput input, .stNumberInput input, .stSelectbox select{
-  background:var(--bg) !important;
-  border:1px solid var(--border) !important;
-  color:var(--text) !important;
-  border-radius:6px !important;
-}
-
-.stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus{
-  border-color:var(--accent) !important;
-  box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1) !important;
-}
-
-/* Sliders */
-.stSlider [role="slider"]{
-  background:var(--accent) !important;
-}
-
-/* Info Panels */
-.info-panel{
-  background:var(--bg2) !important;
-  border:1px solid var(--border) !important;
-  border-left:4px solid var(--accent) !important;
-  padding:16px 20px !important;
-  border-radius:8px !important;
-  margin:16px 0 !important;
-  color:var(--text) !important;
-}
-
-.warn-panel{
-  background:var(--bg2) !important;
-  border:1px solid var(--border) !important;
-  border-left:4px solid var(--warn) !important;
-  padding:16px 20px !important;
-  border-radius:8px !important;
-  margin:16px 0 !important;
-  color:var(--text) !important;
-}
-
-.crit-panel{
-  background:var(--bg2) !important;
-  border:1px solid var(--border) !important;
-  border-left:4px solid var(--crit) !important;
-  padding:16px 20px !important;
-  border-radius:8px !important;
-  margin:16px 0 !important;
-  color:var(--text) !important;
-}
-
-/* Tabs */
-[data-testid="stTabs"] [role="tablist"]{
-  background:var(--bg2) !important;
-  border:1px solid var(--border) !important;
-  border-radius:8px !important;
-  padding:8px !important;
-}
-
-[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
-  background:var(--accent) !important;
-  color:#fff !important;
-  border-radius:6px !important;
-}
-
-[data-testid="stTabs"] [role="tab"][aria-selected="false"]{
-  color:var(--dim) !important;
-}
-
-/* Dataframe */
-.stDataFrame{
-  background:var(--bg) !important;
-  border:1px solid var(--border) !important;
-  border-radius:8px !important;
-}
-
-.stDataFrame table{
-  color:var(--text) !important;
-}
-
-.stDataFrame th{
-  background:var(--bg2) !important;
-  color:var(--accent) !important;
-  font-weight:600 !important;
-}
-
-.stDataFrame tr:hover{
-  background:var(--bg2) !important;
-}
-
-/* Sidebar Elements */
-[data-testid="stSidebar"] .stSlider label{
-  color:var(--text) !important;
-  font-weight:600 !important;
-}
-
-[data-testid="stSidebar"] .stSelectbox label{
-  color:var(--text) !important;
-  font-weight:600 !important;
-}
-
-/* Expander */
-[data-testid="stExpander"] {
-  background: var(--bg2) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-}
-
-[data-testid="stExpander"] > div > div > svg {
-  color: var(--accent) !important;
-}
-
-/* Enhanced text area */
-[data-testid="stTextArea"] > div > div > textarea {
-  background: var(--bg) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 6px !important;
-  color: var(--text) !important;
-  font-family: var(--mono) !important;
-}
-
-/* Hide sidebar collapse button and header */
-[data-testid="stSidebarCollapseButton"]{display:none !important;}
-header[data-testid="stHeader"]{display:none !important;}
-</style>
-"""
-    else:
-        # Original Dark Mission Control Theme
-        return """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-:root {
-  --bg:#05070a; --bg2:#0a0f18; --bg3:#121824; --border:#1e2d42;
-  --accent:#00d4ff; --accent2:#00ffa8; --warn:#ffb800; --crit:#ff3d5c;
-  --text:#c4d4e8; --dim:#5a7a94;
-  --mono:'Space Mono',monospace; --sans:'Barlow Condensed',sans-serif; --ui:'Inter',sans-serif;
-  --gradient-primary: linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-  --gradient-dark: linear-gradient(180deg, #0a0f18 0%, #05070a 100%);
-  --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-/* Base Styles */
-html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
-  background:var(--bg) !important;
-  color:var(--text) !important;
-  font-family:var(--ui) !important;
-  background-image: var(--gradient-dark);
-}
-
-[data-testid="stSidebar"]{
-  background:var(--bg2) !important;
-  border-right:1px solid var(--border) !important;
-  box-shadow: var(--shadow-card);
-}
-
-[data-testid="stSidebar"] *{
-  color:var(--text) !important;
-  font-family:var(--ui) !important;
-}
-
-/* Typography */
-h1{
-  font-family:var(--sans) !important;
-  font-weight:900 !important;
-  font-size:2.2rem !important;
-  letter-spacing:.06em !important;
-  color:#fff !important;
-  text-transform:uppercase !important;
-  line-height:1.2 !important;
-  text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
-}
-
-h2,h3{
-  font-family:var(--sans) !important;
-  color:var(--accent) !important;
-  font-weight:700 !important;
-  letter-spacing:.08em !important;
-  text-transform:uppercase !important;
-  border-bottom:1px solid var(--border) !important;
-  padding-bottom:.4em !important;
-  margin-bottom:1em !important;
-}
-
-/* Metric Cards */
-[data-testid="metric-container"]{
-  background:var(--bg3) !important;
-  border:1px solid var(--border) !important;
-  border-left:4px solid var(--accent) !important;
-  padding:16px 20px !important;
-  border-radius:8px !important;
-  box-shadow: var(--shadow-card);
-  transition: all 0.3s ease !important;
-}
-
-[data-testid="metric-container"]:hover{
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
-}
-
-[data-testid="metric-container"] label{
-  font-family:var(--ui) !important;
-  font-size:.7rem !important;
-  letter-spacing:.12em !important;
-  color:var(--dim) !important;
-  text-transform:uppercase !important;
-  font-weight:600 !important;
-}
-
-[data-testid="metric-container"] [data-testid="stMetricValue"]{
-  font-family:var(--mono) !important;
-  color:var(--accent) !important;
-  font-size:1.8rem !important;
-  font-weight:700 !important;
-}
-
-/* Buttons */
-.stButton button{
-  background:linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 255, 168, 0.1) 100%) !important;
-  border:1px solid var(--accent) !important;
-  color:var(--accent) !important;
-  font-family:var(--mono) !important;
-  font-size:.75rem !important;
-  letter-spacing:.1em !important;
-  text-transform:uppercase !important;
-  padding:10px 24px !important;
-  border-radius:6px !important;
-  transition:all 0.3s ease !important;
-  font-weight:600 !important;
-  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
-}
-
-.stButton button:hover{
-  background:var(--gradient-primary) !important;
-  color:var(--bg) !important;
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-glow);
-}
-
-.stButton button:active{
-  transform: translateY(0);
-}
-
-/* Tabs */
-[data-baseweb="tab-list"]{
-  background:var(--bg2) !important;
-  border-bottom:2px solid var(--border) !important;
-  gap:0 !important;
-  padding: 0 8px !important;
-}
-
-[data-baseweb="tab"]{
-  font-family:var(--sans) !important;
-  font-weight:600 !important;
-  font-size:.85rem !important;
-  letter-spacing:.1em !important;
-  text-transform:uppercase !important;
-  color:var(--dim) !important;
-  padding:14px 24px !important;
-  border-radius:8px 8px 0 0 !important;
-  transition: all 0.3s ease !important;
-}
-
-[aria-selected="true"][data-baseweb="tab"]{
-  color:var(--accent) !important;
-  background:linear-gradient(180deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%) !important;
-  border-bottom:2px solid var(--accent) !important;
-}
-
-/* Input Fields */
-[data-testid="stTextInput"] input{
-  background:var(--bg3) !important;
-  border-color:var(--border) !important;
-  color:var(--text) !important;
-  font-family:var(--mono) !important;
-  font-size:.85rem !important;
-  border-radius:6px !important;
-  padding:10px 14px !important;
-  transition: all 0.3s ease !important;
-}
-
-[data-testid="stTextInput"] input:focus{
-  border-color:var(--accent) !important;
-  box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-}
-
-[data-testid="stSelectbox"]>div>div{
-  background:var(--bg3) !important;
-  border-color:var(--border) !important;
-  border-radius:6px !important;
-}
-
-/* Alert Messages */
-[data-testid="stInfo"]{
-  background:rgba(0,212,255,.06) !important;
-  border:1px solid rgba(0,212,255,.25) !important;
-  border-radius:8px !important;
-  padding:16px 20px !important;
-}
-
-[data-testid="stSuccess"]{
-  background:rgba(0,255,168,.06) !important;
-  border:1px solid rgba(0,255,168,.25) !important;
-  border-radius:8px !important;
-  padding:16px 20px !important;
-}
-
-[data-testid="stError"]{
-  background:rgba(255,61,92,.08) !important;
-  border:1px solid rgba(255,61,92,.35) !important;
-  border-radius:8px !important;
-  padding:16px 20px !important;
-}
-
-[data-testid="stWarning"]{
-  background:rgba(255,184,0,.06) !important;
-  border:1px solid rgba(255,184,0,.25) !important;
-  border-radius:8px !important;
-  padding:16px 20px !important;
-}
-
-/* DataFrames */
-[data-testid="stDataFrame"]{
-  border:1px solid var(--border) !important;
-  border-radius:8px !important;
-  overflow:hidden !important;
-  box-shadow: var(--shadow-card);
-}
-
-/* Toolbar */
+html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{background:#07090f !important;color:var(--text) !important;font-family:var(--sans) !important;}
+[data-testid="stSidebar"]{background:var(--bg2) !important;border-right:1px solid var(--border) !important;}
+[data-testid="stSidebar"] *{color:var(--text) !important;font-family:var(--sans) !important;}
+h1{font-family:var(--sans) !important;font-weight:900 !important;font-size:2rem !important;letter-spacing:.08em !important;color:#fff !important;text-transform:uppercase !important;line-height:1.1 !important;}
+h2,h3{font-family:var(--sans) !important;color:var(--accent) !important;font-weight:700 !important;letter-spacing:.1em !important;text-transform:uppercase !important;border-bottom:1px solid var(--border) !important;padding-bottom:.3em !important;}
+[data-testid="metric-container"]{background:var(--bg3) !important;border:1px solid var(--border) !important;border-left:3px solid var(--accent) !important;padding:12px 16px !important;border-radius:2px !important;}
+[data-testid="metric-container"] label{font-family:var(--sans) !important;font-size:.72rem !important;letter-spacing:.15em !important;color:var(--dim) !important;text-transform:uppercase !important;}
+[data-testid="metric-container"] [data-testid="stMetricValue"]{font-family:var(--mono) !important;color:var(--accent) !important;font-size:1.7rem !important;}
+.stButton button{background:transparent !important;border:1px solid var(--accent) !important;color:var(--accent) !important;font-family:var(--mono) !important;font-size:.75rem !important;letter-spacing:.12em !important;text-transform:uppercase !important;padding:8px 20px !important;border-radius:2px !important;width:100% !important;transition:all .2s !important;}
+.stButton button:hover{background:var(--accent) !important;color:var(--bg) !important;}
+[data-baseweb="tab-list"]{background:var(--bg2) !important;border-bottom:1px solid var(--border) !important;gap:0 !important;}
+[data-baseweb="tab"]{font-family:var(--sans) !important;font-weight:600 !important;font-size:.82rem !important;letter-spacing:.12em !important;text-transform:uppercase !important;color:var(--dim) !important;padding:12px 22px !important;}
+[aria-selected="true"][data-baseweb="tab"]{color:var(--accent) !important;background:transparent !important;}
+[data-testid="stTextInput"] input{background:var(--bg3) !important;border-color:var(--border) !important;color:var(--text) !important;font-family:var(--mono) !important;font-size:.82rem !important;}
+[data-testid="stSelectbox"]>div>div{background:var(--bg3) !important;border-color:var(--border) !important;}
+[data-testid="stInfo"]{background:rgba(0,200,255,.04) !important;border:1px solid rgba(0,200,255,.25) !important;}
+[data-testid="stSuccess"]{background:rgba(0,255,157,.04) !important;border:1px solid rgba(0,255,157,.25) !important;}
+[data-testid="stError"]{background:rgba(255,43,77,.06) !important;border:1px solid rgba(255,43,77,.30) !important;}
+[data-testid="stWarning"]{background:rgba(255,170,0,.04) !important;border:1px solid rgba(255,170,0,.25) !important;}
+[data-testid="stDataFrame"]{border:1px solid var(--border) !important;}
 [data-testid="stElementToolbarButton"]{display:none !important;}
 [data-testid="stElementToolbar"]{display:none !important;}
-
-/* Download Button */
-[data-testid="stDownloadButton"] button{
-  width:auto !important;
-  background:var(--bg3) !important;
-  border:1px solid var(--accent) !important;
-  color:var(--accent) !important;
-  font-family:var(--mono) !important;
-  font-size:.7rem !important;
-  letter-spacing:.08em !important;
-  text-transform:uppercase !important;
-  padding:8px 18px !important;
-  border-radius:6px !important;
-  transition: all 0.3s ease !important;
-}
-
-[data-testid="stDownloadButton"] button:hover{
-  background:var(--gradient-primary) !important;
-  color:var(--bg) !important;
-  transform: translateY(-2px);
-}
-
-/* Scrollbar */
-::-webkit-scrollbar{width:6px;height:6px;}
+[data-testid="stDownloadButton"] button{width:auto !important;background:var(--bg3) !important;border:1px solid var(--accent) !important;color:var(--accent) !important;font-family:var(--mono) !important;font-size:.72rem !important;letter-spacing:.1em !important;text-transform:uppercase !important;padding:6px 16px !important;border-radius:2px !important;}
+[data-testid="stDownloadButton"] button:hover{background:var(--accent) !important;color:var(--bg) !important;}
+::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:var(--bg2);}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
-::-webkit-scrollbar-thumb:hover{background:var(--accent);}
-
-/* Layout */
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
 section[data-testid="stMain"]>div{background:var(--bg) !important;}
 div[data-testid="stVerticalBlock"]{background:transparent !important;}
-
-/* Markdown */
-.stMarkdown,.stMarkdown p{color:var(--text) !important;line-height:1.7 !important;}
-
-/* Slider */
-[data-baseweb="slider"]{background:var(--bg3) !important;}
-[data-baseweb="slider-handle"]{background:var(--accent) !important;}
-
-/* Progress Bar */
-[data-testid="stProgress"]{background:var(--bg3) !important;}
-[data-testid="stProgress"] > div > div > div{background:var(--gradient-primary) !important;}
-
-/* Custom Panels */
-.info-panel{
-  background:rgba(0,212,255,.04);
-  border:1px solid rgba(0,212,255,.18);
-  border-left:4px solid var(--accent);
-  padding:16px 20px;
-  margin:12px 0;
-  border-radius:8px;
-  font-size:.9rem;
-  line-height:1.7;
-  box-shadow: 0 4px 15px rgba(0, 212, 255, 0.1);
-}
-
-.warn-panel{
-  background:rgba(255,184,0,.04);
-  border:1px solid rgba(255,184,0,.18);
-  border-left:4px solid var(--warn);
-  padding:16px 20px;
-  margin:12px 0;
-  border-radius:8px;
-  font-size:.9rem;
-  line-height:1.7;
-  box-shadow: 0 4px 15px rgba(255, 184, 0, 0.1);
-}
-
-.crit-panel{
-  background:rgba(255,61,92,.04);
-  border:1px solid rgba(255,61,92,.18);
-  border-left:4px solid var(--crit);
-  padding:16px 20px;
-  margin:12px 0;
-  border-radius:8px;
-  font-size:.9rem;
-  line-height:1.7;
-  box-shadow: 0 4px 15px rgba(255, 61, 92, 0.1);
-}
-
-/* Animation for loading */
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-[data-testid="stSpinner"] > div {
-  animation: pulse 1.5s ease-in-out infinite;
-}
-
-/* Enhanced selectbox */
+.stMarkdown,.stMarkdown p{color:var(--text) !important;}
 [data-baseweb="select"] *{background:var(--bg3) !important;color:var(--text) !important;}
 [data-baseweb="popover"]{background:var(--bg3) !important;border:1px solid var(--border) !important;}
 [data-baseweb="menu"]{background:var(--bg3) !important;}
-
 /* Sidebar top header (broken Material Icons icon) hide */
 [data-testid="stSidebarHeader"]{display:none !important;}
 [data-testid="stSidebarCollapseButton"]{display:none !important;}
 header[data-testid="stHeader"]{display:none !important;}
-
-/* Enhanced text area */
-[data-testid="stTextArea"] > div > div > textarea {
-  background: var(--bg3) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 6px !important;
-  color: var(--text) !important;
-  font-family: var(--mono) !important;
-}
-
-/* Expander */
-[data-testid="stExpander"] {
-  background: var(--bg3) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-}
-
-[data-testid="stExpander"] > div > div > svg {
-  color: var(--accent) !important;
-}
-
-/* Hide sidebar collapse button and header */
-[data-testid="stSidebarCollapseButton"]{display:none !important;}
-header[data-testid="stHeader"]{display:none !important;}
+.info-panel{background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--dim);padding:14px 18px;font-family:var(--sans);font-size:.88rem;line-height:1.7;margin:8px 0;}
+.info-panel b{color:var(--accent);}
+.warn-panel{background:rgba(255,170,0,.05);border:1px solid rgba(255,170,0,.3);border-left:3px solid #ffaa00;padding:12px 16px;font-family:var(--sans);font-size:.85rem;line-height:1.6;margin:8px 0;color:#b8cfe0;}
+.crit-panel{background:rgba(255,43,77,.06);border:1px solid rgba(255,43,77,.35);border-left:3px solid #ff2b4d;padding:12px 16px;font-family:var(--sans);font-size:.85rem;line-height:1.6;margin:8px 0;color:#b8cfe0;}
 </style>
 """
 
 
 # ================================================================================
-#  EARTH VIEW - ENHANCED WITH ERROR HANDLING
+#  EARTH VIEW
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
+@st.cache_data(show_spinner=False)
 def load_earth_texture(resolution: int = 360, style: str = "night"):
     """
     Loads high-resolution NASA Earth textures and optimizes them for Plotly Surface rendering.
     style: "night" (Night Lights), "realistic" (Realistic Blue Marble), "futuristic" (Blue/Cyan Tonal)
-    Enhanced with better error handling and performance optimization.
     """
     try:
         if style == "night":
@@ -885,7 +168,7 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                 lon = np.linspace(-np.pi, np.pi, W)
                 lon_g, lat_g = np.meshgrid(lon, lat)
 
-                R = EARTH_RADIUS_KM
+                R = 6371.0
                 x = R * np.cos(lat_g) * np.cos(lon_g)
                 y = R * np.cos(lat_g) * np.sin(lon_g)
                 z = R * np.sin(lat_g)
@@ -896,148 +179,100 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
 
         return None
     except Exception as e:
-        print(f"Earth texture load failed: {str(e)[:50]}")
+        st.sidebar.warning(f"Earth texture load failed: {str(e)[:50]}")
         return None
 
 
 # ================================================================================
-#  DATA FETCHING & TLE PARSING
-# ================================================================================
 #  DATA FETCHING
 # ================================================================================
-def count_tle_objects(lines: list) -> int:
-    if not lines:
-        return 0
-    is_3ln = not (lines[0].startswith("1 ") or lines[0].startswith("2 "))
-    step = 3 if is_3ln else 2
-    return len(lines) // step
-
-
-def trim_tle_lines(lines: list, sat_limit: int) -> list:
-    if not lines:
-        return []
-    is_3ln = not (lines[0].startswith("1 ") or lines[0].startswith("2 "))
-    step = 3 if is_3ln else 2
-    max_lines = max(1, sat_limit) * step
-    return lines[:max_lines]
-
-
-def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limit: int):
-    """
-    Enhanced Space-Track TLE fetching with better error handling and user feedback.
-    """
+def fetch_spacetrack_tles(username: str, password: str, group_key: str):
     try:
         config = GROUP_CONFIG.get(group_key)
         if not config:
-            return None, f"Unknown group: {group_key}"
+            return None, f"Geçersiz grup: {group_key}"
 
         client = SpaceTrackClient(identity=username, password=password)
 
-        # Add timeout handling
         if config["spacetrack_mode"] == "norad":
             raw = client.gp(
                 norad_cat_id=config["spacetrack_value"],
                 format="tle",
                 orderby="epoch desc",
-                limit=1,  # For NORAD (specific satellite), we only need the latest TLE
+                limit=1,
             )
         else:
             raw = client.gp(
                 object_name=op.like(f"{config['spacetrack_value']}%"),
                 format="tle",
                 orderby="epoch desc",
-                limit=max(1, sat_limit),
+                limit=90,
             )
 
         if not raw or not raw.strip():
             return None, f"Space-Track üzerinde '{group_key}' için veri bulunamadı."
 
-        raw_lines = raw.strip().split("\n")
-        # Fazla satırları manuel kırp
-        if len(raw_lines) > sat_limit * 2:
-            raw_lines = raw_lines[: sat_limit * 2]
-        lines = [l.strip() for l in raw_lines if l.strip()]
+        lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
         if len(lines) < 2:
             return None, "Space-Track geçerli TLE döndürmedi."
-        # trim_tle_lines zaten yapıyor ama tekrar çalıştırabilirsin
 
-        lines = trim_tle_lines(lines, sat_limit)
         return lines, "Veri Space-Track üzerinden alındı."
+
     except Exception as e:
-        error_msg = str(e)
-        if "authentication" in error_msg.lower():
-            return (
-                None,
-                "Space-Track kimlik doğrulama hatası. Lütfen kullanıcı adı ve şifrenizi kontrol edin.",
-            )
-        elif "timeout" in error_msg.lower():
-            return (
-                None,
-                "Space-Track bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin.",
-            )
-        elif "rate limit" in error_msg.lower():
-            return None, "Space-Track hız sınırı aşıldı. Lütfen kilka dakika bekleyin."
-        else:
-            return None, f"Space-Track hatası: {error_msg[:100]}"
+        return None, f"Space-Track hatası: {e}"
 
 
-def fetch_celestrak_tles(group_key: str, sat_limit: int):
+def fetch_celestrak_tles(group_key: str):
     try:
         config = GROUP_CONFIG.get(group_key)
         if not config:
-            return None, f"Unknown group: {group_key}"
+            return None, f"Geçersiz grup: {group_key}"
+
         celestrak_group = config["celestrak_group"]
-        url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group}&FORMAT=TLE"
-        headers = {"User-Agent": "Mozilla/5.0 (StarWeb-CARA/1.0)"}
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                resp = requests.get(url, headers=headers, timeout=30)
-                resp.raise_for_status()
-                break
-            except requests.exceptions.RequestException:
-                if attempt == max_retries - 1:
-                    raise
-                time.sleep(2**attempt)
+        url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group.upper()}&FORMAT=TLE"
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) StarWeb-CARA/1.0"
+        }
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+
         raw = resp.text
         if not raw or not raw.strip():
             return None, f"CelesTrak üzerinde '{group_key}' için veri bulunamadı."
+
         lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
         if len(lines) < 2:
             return None, "CelesTrak geçerli TLE döndürmedi."
-        lines = trim_tle_lines(lines, sat_limit)
+
         return lines, "Veri CelesTrak üzerinden alındı."
-    except requests.exceptions.Timeout:
-        return None, "CelesTrak bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin."
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 404:
-            return None, f"CelesTrak üzerinde '{group_key}' için veri bulunamadı (404)."
-        elif e.response.status_code == 429:
-            return None, "CelesTrak hız sınırı aşıldı. Lütfen birkaç dakika bekleyin."
-        else:
-            return None, f"CelesTrak HTTP hatası: {e.response.status_code}"
+
     except Exception as e:
-        return None, f"CelesTrak hatası: {str(e)[:100]}"
+        return None, f"CelesTrak hatası: {e}"
 
 
-def fetch_tles_with_fallback(
-    username: str, password: str, group_key: str, sat_limit: int
-):
-    lines, primary_message = fetch_spacetrack_tles(
-        username, password, group_key, sat_limit
-    )
+def fetch_tles_with_fallback(username: str, password: str, group_key: str):
+    lines, message = fetch_spacetrack_tles(username, password, group_key)
     if lines:
-        return {"lines": lines, "source": "Space-Track", "message": primary_message}
+        return {
+            "lines": lines,
+            "source": "Space-Track",
+            "message": message,
+        }
 
-    lines, fallback_message = fetch_celestrak_tles(group_key, sat_limit)
+    st.sidebar.warning(
+        "Space-Track başarısız oldu, CelesTrak yedek kaynağı deneniyor..."
+    )
+
+    lines, fallback_message = fetch_celestrak_tles(group_key)
     if lines:
         return {
             "lines": lines,
             "source": "CelesTrak",
-            "message": f"{primary_message} CelesTrak yedek kaynağı üzerinden veri alındı.",
+            "message": fallback_message,
         }
 
-    st.sidebar.error(primary_message)
+    st.sidebar.error(message)
     st.sidebar.error(fallback_message)
     return None
 
@@ -1045,19 +280,7 @@ def fetch_tles_with_fallback(
 # ================================================================================
 #  TLE PARSING
 # ================================================================================
-def build_fallback_sat_name(tle_line_1: str, fallback_name_prefix: str = None) -> str:
-    norad_id = tle_line_1[2:7].strip()
-    if fallback_name_prefix:
-        return f"{fallback_name_prefix} {norad_id}"
-    return f"NORAD {norad_id}"
-
-
-def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -> list:
-    """
-    Parse TLE lines into EarthSatellite objects.
-    Note: Not cached because EarthSatellite objects are not serializable.
-    The heavy computations (position propagation, conjunction analysis) are cached instead.
-    """
+def parse_tles(lines: list, limit: int = 30) -> list:
     sats = []
     is_3ln = not (lines[0].startswith("1 ") or lines[0].startswith("2 "))
     step = 3 if is_3ln else 2
@@ -1066,7 +289,7 @@ def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -
             if is_3ln:
                 name, l1, l2 = lines[i], lines[i + 1], lines[i + 2]
             else:
-                name = build_fallback_sat_name(lines[i], fallback_name_prefix)
+                name = f"OBJ-{lines[i][2:7].strip()}"
                 l1, l2 = lines[i], lines[i + 1]
             sats.append(EarthSatellite(l1, l2, name, ts))
             if len(sats) >= limit:
@@ -1077,15 +300,10 @@ def parse_tles(lines: list, limit: int = 30, fallback_name_prefix: str = None) -
 
 
 # ================================================================================
-#  ORBITAL ELEMENTS & APSIS FILTER
-# ================================================================================
 #  ORBITAL ELEMENTS (from TLE)
 # ================================================================================
 def get_orbital_elements(sat: EarthSatellite) -> dict:
-    """
-    Extracts Kepler orbital elements from TLE.
-    Note: Not cached because EarthSatellite objects are not serializable.
-    """
+    """Extracts Kepler orbital elements from TLE."""
     try:
         model = sat.model
         # Elements from TLE epoch
@@ -1096,10 +314,10 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
         mean_m = math.degrees(model.mo)  # mean anomaly (deg)
         n_rpm = model.no_kozai * (60.0 / (2 * math.pi))  # rad/min → devir/min
         # Semi-major axis: a = (GM/n^2)^(1/3), n rad/s
-        GM = MU_EARTH_KM3_S2  # km^3/s^2
+        GM = 398600.4418  # km^3/s^2
         n_rads = model.no_kozai / 60.0  # rad/s
         a_km = (GM / n_rads**2) ** (1 / 3)
-        alt_km = a_km - EARTH_RADIUS_KM
+        alt_km = a_km - 6371.0
         period_min = 2 * math.pi / model.no_kozai
         return {
             "Semi-major Axis a (km)": round(a_km, 1),
@@ -1119,33 +337,26 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
 # ================================================================================
 #  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
-
-def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> list:
+def apsis_filter(sats: list, threshold_km: float = 50.0) -> list:
     """
     Apsis (Apogee-Perigee) Filter — Section 2.1
     Reduces O(N^2) complexity by filtering pairs with non-overlapping
     altitude bands.
     q1 > Q2 + D   →   physical intersection impossible → filtered
-    Note: Not cached because EarthSatellite objects are not serializable.
     """
-    R_E = EARTH_RADIUS_KM
-    GM = MU_EARTH_KM3_S2
+    R_E = 6371.0
+    GM = 398600.4418
 
     def apsis(sat):
         try:
-            # Enhanced error handling for different satellite models
-            if hasattr(sat, "model") and hasattr(sat.model, "no_kozai"):
-                n = sat.model.no_kozai / 60.0  # rad/s
-                a = (GM / n**2) ** (1 / 3)
-                e = sat.model.ecco
-                per = a * (1 - e) - R_E  # perigee altitude
-                apo = a * (1 + e) - R_E  # apogee altitude
-                return per, apo
-            else:
-                # Fallback for satellites without model attributes
-                return 0.0, 2000.0
+            n = sat.model.no_kozai / 60.0  # rad/s
+            a = (GM / n**2) ** (1 / 3)
+            e = sat.model.ecco
+            per = a * (1 - e) - R_E  # perigee altitude
+            apo = a * (1 + e) - R_E  # apogee altitude
+            return per, apo
         except Exception:
-            return 0.0, 2000.0  # 2000 km üzeri LEO sayılmaz, filtre dışı kalır
+            return 0.0, 10000.0
 
     passed = []
     for s1, s2 in combinations(sats, 2):
@@ -1156,54 +367,37 @@ def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) ->
     return passed
 
 
-def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> bool:
-    """
-    Backward compatibility function for apsis overlap check.
-    Returns True if two satellites have overlapping altitude bands.
-    """
-    R_E = EARTH_RADIUS_KM
-    GM = MU_EARTH_KM3_S2
-
-    def apsis(sat):
-        try:
-            if hasattr(sat, "model") and hasattr(sat.model, "no_kozai"):
-                n = sat.model.no_kozai / 60.0  # rad/s
-                a = (GM / n**2) ** (1 / 3)
-                e = sat.model.ecco
-                per = a * (1 - e) - R_E  # perigee altitude
-                apo = a * (1 + e) - R_E  # apogee altitude
-                return per, apo
-            else:
-                return 0.0, 10000.0
-        except Exception:
-            return 0.0, 2000.0  # LEO üst sınırı
-
-    q1, Q1 = apsis(sat1)
-    q2, Q2 = apsis(sat2)
-    return max(q1, q2) <= min(Q1, Q2) + threshold_km
-
-
-# ================================================================================
-#  RISK CALCULATIONS (Foster 2D-Pc, Mahalanobis, Max Pc, Dilution, Fragmentation, Risk Level)
 # ================================================================================
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def foster_2d_pc(
-    miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020
+    miss_km: float,
+    sigma_r: float,
+    sigma_t: float,
+    sigma_n: float,
+    hbr_km: float = 0.020,
 ) -> float:
     """
     Foster & Estes (1992) 2D-Pc Model — Section 3.1
-    Enhanced with flexible parameter handling for compatibility.
-    Cached for performance improvement.
+    Gaussian integral projected onto encounter plane.
+    sigma_r: radial (km), sigma_t: in-track (km), sigma_n: cross-track (km)
+    Combined covariance: two components in encounter plane.
     """
     try:
-        if sigma_x <= 0 or sigma_y <= 0:
+        # Encounter plane components (radial + normal)
+        sig_x = math.sqrt(sigma_r**2 + sigma_r**2)  # combined radial
+        sig_y = math.sqrt(sigma_n**2 + sigma_n**2)  # combined normal
+        if sig_x <= 0 or sig_y <= 0:
             return 0.0
 
+        # Circle integral over 2D Gaussian (numerical)
+        # Gaussian distribution centered at TCA mean miss point (miss_km, 0);
+        # integration region is HBR-radius circle around origin (actual collision sphere).
         def integrand(y, x):
-            return (1.0 / (2 * math.pi * sigma_x * sigma_y)) * math.exp(
-                -0.5 * (((x - miss_km) / sigma_x) ** 2 + (y / sigma_y) ** 2)
+            return (
+                1.0
+                / (2 * math.pi * sig_x * sig_y)
+                * math.exp(-0.5 * (((x - miss_km) / sig_x) ** 2 + (y / sig_y) ** 2))
             )
 
         result, _ = dblquad(
@@ -1216,10 +410,9 @@ def foster_2d_pc(
         )
         return max(float(result), 0.0)
     except Exception:
-        return collision_probability_isotropic(miss_km, (sigma_x + sigma_y) / 2, hbr_km)
+        return collision_probability_isotropic(miss_km, (sigma_r + sigma_n) / 2, hbr_km)
 
 
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def collision_probability_isotropic(
     miss_km: float, sigma_km: float, hbr_km: float = 0.020
 ) -> float:
@@ -1227,7 +420,6 @@ def collision_probability_isotropic(
     Chan (1997) isotropic model — fast fallback.
     Correct formula: P(|X_rel| ≤ HBR) for x ∈ N(miss, σ)
     Pc = Φ((HBR - miss)/σ) + Φ((HBR + miss)/σ) - 1
-    Cached for performance improvement.
     """
     if sigma_km <= 0:
         return 0.0
@@ -1247,13 +439,11 @@ def collision_probability(miss_km, sigma_km, hbr_km=0.020):
 # ================================================================================
 #  MAHALANOBIS DISTANCE TEST (Section 3.2 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def mahalanobis_test(miss_km: float, sigma_km: float) -> dict:
     """
     2D-Pc validity test (CARA methodology — Section 3.2).
     Mahalanobis distance Md = miss / sigma.
     Md < 1.5 → linear motion assumption breaks down → 3D-Pc required.
-    Cached for performance improvement.
     """
     if sigma_km <= 0:
         return {"Md": 999.0, "valid_2d": True, "label": "Valid"}
@@ -1271,13 +461,11 @@ def mahalanobis_test(miss_km: float, sigma_km: float) -> dict:
 # ================================================================================
 #  MAXIMUM Pc ANALYSIS (Section 4 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def max_pc_analysis(miss_km: float, hbr_km: float = 0.020) -> float:
     """
     Max Pc — Section 4 (CARA toolkit).
     Scans covariance multiplier σ to find mathematical maximum Pc.
     Worst case: σ_opt = miss / sqrt(2) (Gaussian peak point).
-    Cached for performance improvement.
     """
     sigma_opt = miss_km / math.sqrt(2.0) if miss_km > 0 else hbr_km
     return collision_probability_isotropic(miss_km, max(sigma_opt, 1e-6), hbr_km)
@@ -1286,13 +474,11 @@ def max_pc_analysis(miss_km: float, hbr_km: float = 0.020) -> float:
 # ================================================================================
 #  PROBABILITY DILUTION DETECTION (Section 4 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def dilution_check(pc: float, sigma_km: float, miss_km: float) -> dict:
     """
     Probability Dilution detection — Section 4.
     Wide covariance → small Pc → false confidence.
     Warning: sigma > 5*miss_km and pc < 1e-6
-    Cached for performance improvement.
     """
     diluted = (sigma_km > 5.0 * miss_km) and (pc < 1e-6) and (miss_km < 100.0)
     if diluted:
@@ -1307,7 +493,6 @@ def dilution_check(pc: float, sigma_km: float, miss_km: float) -> dict:
 # ================================================================================
 #  FRAGMENTATION PROBABILITY Pf (Section 4 — Thesis)
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
 def fragmentation_probability(
     rel_vel_km_s: float, mass_a_kg: float = 250.0, mass_b_kg: float = 250.0
 ) -> dict:
@@ -1317,7 +502,6 @@ def fragmentation_probability(
     Specific Energy: E_c = 0.5 * m_b * v_rel^2 / m_a  (J/g)
     E_c > 40 J/g → Catastrophic fragmentation (Kessler contribution)
     E_c > 0 J/g  → Damaging
-    Cached for performance improvement.
     """
     v_ms = rel_vel_km_s * 1000.0
     E_c = 0.5 * mass_b_kg * v_ms**2 / (mass_a_kg * 1000.0)  # J/g
@@ -1350,100 +534,95 @@ def fragmentation_probability(
 # ================================================================================
 #  RISK LEVEL
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
-def risk_level(pc: float, theme="dark") -> tuple:
-    """NASA STD-8719.14 — 4-tier risk classification with enhanced error handling."""
-    try:
-        if pc > 1e-3:
-            return "CRITICAL", "#dc3545" if theme == "light" else "#ff3d5c"
-        elif pc > 1e-4:
-            return "HIGH", "#fd7e14" if theme == "light" else "#ff6b00"
-        elif pc > 1e-5:
-            return "MEDIUM", "#ffc107" if theme == "light" else "#ffb800"
-        else:
-            return "LOW", "#28a745" if theme == "light" else "#00ffa8"
-    except Exception:
-        return "UNKNOWN", "#6c757d" if theme == "light" else "#5a7a94"
+def risk_level(pc: float) -> tuple:
+    """NASA STD-8719.14 — 4-tier risk classification."""
+    if pc > 1e-3:
+        return "CRITICAL", "#ff2b4d"
+    elif pc > 1e-4:
+        return "HIGH", "#ff6b00"
+    elif pc > 1e-5:
+        return "MEDIUM", "#ffaa00"
+    else:
+        return "LOW", "#00ff9d"
 
 
 # ================================================================================
-#  CONJUNCTION ANALYSIS
+#  MAIN CONJUNCTION ANALYSIS (APSIS FILTERED)
 # ================================================================================
-#  HELPER FUNCTION FOR CONJUNCTION METRICS (EXTRACTED TO REDUCE DUPLICATION)
-# ================================================================================
-def _compute_conjunction_metrics(
-    sat1,
-    sat2,
-    pos1,
-    pos2,
-    jd_values,
-    sigma_km,
-    hbr_km,
-    mass_a_kg,
-    mass_b_kg,
-    theme="dark",
-):
+def compute_conjunctions(
+    sats: list,
+    window_hrs: int,
+    sigma_km: float,
+    mass_a_kg: float = 250.0,
+    mass_b_kg: float = 250.0,
+) -> tuple:
     """
-    Core function to compute conjunction metrics for a satellite pair.
-    Extracted to eliminate code duplication between compute_conjunctions and compute_conjunctions_custom.
-    Optimized with early returns and error handling.
+    Apsis filter + 5-min step TCA scan + multiple Pc metrics.
+    Returns: (df_results, n_apsis_filtered, n_total_pairs)
     """
-    # Validate inputs
-    if pos1 is None or pos2 is None or sat1 is None or sat2 is None:
-        return None
+    now = ts.now()
+    step_m = 5
+    n_steps = window_hrs * 60 // step_m
+    n_total = len(list(combinations(sats, 2)))
 
-    # Compute distance array
-    try:
-        dists = np.linalg.norm(pos1 - pos2, axis=0)
-    except Exception:
-        return None
+    # Apsis pre-filter
+    candidate_pairs = apsis_filter(sats, threshold_km=100.0)
+    n_filtered = n_total - len(candidate_pairs)
 
-    if len(dists) == 0 or np.all(np.isnan(dists)):
-        return None
+    results = []
+    for s1, s2 in candidate_pairs:
+        min_d = np.inf
+        best_t = None
+        dist_arr = []
 
-    tca_idx = int(np.nanargmin(dists))
-    min_d = float(dists[tca_idx])
-    if min_d >= CONJUNCTION_DISTANCE_THRESHOLD_KM:
-        return None
+        for i in range(n_steps):
+            t = ts.tt_jd(now.tt + i * step_m / 1440.0)
+            p1 = s1.at(t).position.km
+            p2 = s2.at(t).position.km
+            d = float(np.linalg.norm(p1 - p2))
+            dist_arr.append(d)
+            if d < min_d:
+                min_d, best_t = d, t
 
-    best_t = ts.tt_jd(float(jd_values[tca_idx]))
-    dist_arr = dists.tolist()
+        if min_d >= 500:
+            continue
 
-    rel_vel = _relative_velocity(sat1, sat2, best_t)
-    pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
-    pc_foster = foster_2d_pc(
-        min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km
-    )  # Note: sigma_y = 2*sigma_x as in original
-    pc_max = max_pc_analysis(min_d, hbr_km)
-    mah = mahalanobis_test(min_d, sigma_km)
-    dil = dilution_check(pc_iso, sigma_km, min_d)
-    frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
-    sev, color = risk_level(pc_iso, theme)
+        rel_vel = _relative_velocity(s1, s2, best_t)
+        pc_iso = collision_probability_isotropic(min_d, sigma_km)
+        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km)
+        pc_max = max_pc_analysis(min_d)
+        mah = mahalanobis_test(min_d, sigma_km)
+        dil = dilution_check(pc_iso, sigma_km, min_d)
+        frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
+        sev, color = risk_level(pc_iso)
 
-    return {
-        "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
-        "Object A": sat1.name,
-        "Object B": sat2.name,
-        "Distance (km)": round(min_d, 3),
-        "Relative Velocity (km/s)": round(rel_vel, 3),
-        "Pc (isotropic)": pc_iso,
-        "Pc (Foster 2D)": pc_foster,
-        "Pc Max": pc_max,
-        "Pc (scientific)": f"{pc_iso:.3e}",
-        "Mahalanobis Md": mah["Md"],
-        "2D-Pc Valid": mah["label"],
-        "Dilution": dil["diluted"],
-        "Dilution Message": dil["msg"],
-        "Ec (J/g)": frag["E_c_J_per_g"],
-        "Fragmentation Level": frag["level"],
-        "Estimated Debris": frag["est_debris"],
-        "Risk Level": sev,
-        "_color": color,
-        "_dist_arr": dist_arr,
-        "_tca_tt": best_t.tt,
-        "_s1": sat1,
-        "_s2": sat2,
-    }
+        results.append(
+            {
+                "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
+                "Object A": s1.name,
+                "Object B": s2.name,
+                "Distance (km)": round(min_d, 3),
+                "Relative Velocity (km/s)": round(rel_vel, 3),
+                "Pc (isotropic)": pc_iso,
+                "Pc (Foster 2D)": pc_foster,
+                "Pc Max": pc_max,
+                "Pc (scientific)": f"{pc_iso:.3e}",
+                "Mahalanobis Md": mah["Md"],
+                "2D-Pc Valid": mah["label"],
+                "Dilution": dil["diluted"],
+                "Dilution Message": dil["msg"],
+                "Ec (J/g)": frag["E_c_J_per_g"],
+                "Fragmentation Level": frag["level"],
+                "Estimated Debris": frag["est_debris"],
+                "Risk Level": sev,
+                "_color": color,
+                "_dist_arr": dist_arr,
+                "_s1": s1,
+                "_s2": s2,
+            }
+        )
+
+    return pd.DataFrame(results), n_filtered, n_total
 
 
 def _relative_velocity(s1, s2, t) -> float:
@@ -1453,216 +632,21 @@ def _relative_velocity(s1, s2, t) -> float:
 
 
 # ================================================================================
-#  MAIN CONJUNCTION ANALYSIS FUNCTIONS (REFactored)
-# ================================================================================
-def compute_conjunctions(
-    sats: list,
-    window_hrs: int,
-    sigma_km: float,
-    hbr_km: float = 0.020,
-    mass_a_kg: float = 250.0,
-    mass_b_kg: float = 250.0,
-    theme: str = "dark",
-) -> tuple:
-    """
-    Enhanced Apsis filter + 5-min step TCA scan + multiple Pc metrics with progress tracking.
-    Returns: (df_results, n_apsis_filtered, n_total_pairs)
-    """
-    if ts is None:
-        print("Error: Timescale not initialized")
-        return pd.DataFrame(), 0, 0
-
-    now = ts.now()
-    times, _ = build_time_grid(now.tt, window_hrs)
-    if times is None:
-        print("Error: Failed to build time grid")
-        return pd.DataFrame(), 0, 0
-
-    jd_values = np.asarray(times.tt)
-    n_total = len(sats) * (len(sats) - 1) // 2
-
-    # Progress tracking for large datasets
-    try:
-        progress_bar = (
-            st.progress(0, text="Analyzing satellite pairs...")
-            if n_total > 100
-            else None
-        )
-    except Exception:
-        progress_bar = None
-
-    # Apsis pre-filter (cached)
-    candidate_pairs = apsis_filter(sats, threshold_km=APSIS_FILTER_THRESHOLD_KM)
-    n_filtered = n_total - len(candidate_pairs)
-
-    # Position caching for performance (cached)
-    positions_by_id = {}
-    for idx, sat in enumerate(sats):
-        if (
-            progress_bar and idx % max(1, len(sats) // 20) == 0
-        ):  # Update less frequently
-            progress = (idx + 1) / len(sats)
-            progress_bar.progress(
-                progress, text=f"Precomputing positions... {idx + 1}/{len(sats)}"
-            )
-        positions_by_id[id(sat)] = (sat, propagated_positions(sat, times))
-
-    results = []
-    for idx, (sat1, sat2) in enumerate(candidate_pairs):
-        if progress_bar:
-            progress = (idx + 1) / len(candidate_pairs)
-            if idx % max(1, len(candidate_pairs) // 20) == 0:  # Update less frequently
-                progress_bar.progress(
-                    progress,
-                    text=f"Analyzing conjunctions... {idx + 1}/{len(candidate_pairs)}",
-                )
-
-        # Retrieve precomputed data
-        sat1_obj, pos1 = positions_by_id.get(id(sat1), (None, None))
-        sat2_obj, pos2 = positions_by_id.get(id(sat2), (None, None))
-
-        if pos1 is None or pos2 is None or sat1_obj is None or sat2_obj is None:
-            continue
-
-        # Compute metrics using helper function
-        result = _compute_conjunction_metrics(
-            sat1_obj,
-            sat2_obj,
-            pos1,
-            pos2,
-            jd_values,
-            sigma_km,
-            hbr_km,
-            mass_a_kg,
-            mass_b_kg,
-            theme,
-        )
-        if result:
-            results.append(result)
-
-    # Clear progress bar
-    if progress_bar:
-        progress_bar.empty()
-
-    return pd.DataFrame(results), n_filtered, n_total
-
-
-def compute_conjunctions_custom(
-    my_sat,
-    sats: list,
-    window_hrs: int,
-    sigma_km: float,
-    hbr_km: float = 0.020,
-    mass_a_kg: float = 250.0,
-    mass_b_kg: float = 250.0,
-    theme: str = "dark",
-) -> pd.DataFrame:
-    """
-    Compares user's own satellite with existing satellite fleet.
-    Apsis filter + 5-min TCA scan + full Pc metrics.
-    """
-    if ts is None:
-        print("Error: Timescale not initialized")
-        return pd.DataFrame()
-
-    now = ts.now()
-    times, _ = build_time_grid(now.tt, window_hrs)
-    if times is None:
-        print("Error: Failed to build time grid")
-        return pd.DataFrame()
-
-    jd_values = np.asarray(times.tt)
-    R_E, GM = EARTH_RADIUS_KM, MU_EARTH_KM3_S2
-
-    def apsis(sat):
-        try:
-            n = sat.model.no_kozai / 60.0
-            a = (GM / n**2) ** (1 / 3)
-            e = sat.model.ecco
-            return a * (1 - e) - R_E, a * (1 + e) - R_E
-        except Exception:
-            return 0.0, 10000.0
-
-    my_q, my_Q = apsis(my_sat)
-    my_pos = propagated_positions(my_sat, times)  # Cached
-    results = []
-    if my_pos is None:
-        return pd.DataFrame(results)
-
-    # Precompute user satellite position once
-    my_sat_obj = my_sat
-
-    for idx, sat in enumerate(sats):
-        q, Q = apsis(sat)
-        # Apsis filter
-        if (
-            max(my_q, q) > min(my_Q, Q) + 100.0
-        ):  # Note: Using 100.0 here as in original (intentional for custom?)
-            continue
-
-        sat_pos = propagated_positions(sat, times)  # Cached
-        if sat_pos is None:
-            continue
-
-        # Compute metrics using helper function
-        result = _compute_conjunction_metrics(
-            my_sat_obj,
-            sat,
-            my_pos,
-            sat_pos,
-            jd_values,
-            sigma_km,
-            hbr_km,
-            mass_a_kg,
-            mass_b_kg,
-            theme,
-        )
-        if result:
-            results.append(result)
-
-    return pd.DataFrame(results)
-
-
-# ================================================================================
-#  PLOTS - ENHANCED VISUALIZATION
-# ================================================================================
-# NOT: fig_animated_conjunction artik module_figures_animation.py icinde.
-# app.py icinde iki modulden de import edin.
-
-
-#  PLOTS - ENHANCED VISUALIZATION
+#  PLOTS
 # ================================================================================
 DARK = dict(
-    paper_bgcolor="#05070a",
-    plot_bgcolor="#05070a",
-    font=dict(family="Space Mono, monospace", color="#c4d4e8", size=11),
+    paper_bgcolor="#07090f",
+    plot_bgcolor="#07090f",
+    font=dict(family="Space Mono, monospace", color="#b8cfe0", size=11),
 )
-
-# Enhanced color palette for better visual distinction
-ENHANCED_COLORS = [
-    "#00d4ff",  # Bright cyan
-    "#00ffa8",  # Bright green
-    "#ffb800",  # Bright orange
-    "#ff6b00",  # Deep orange
-    "#c060ff",  # Purple
-    "#ff3d5c",  # Red
-    "#60d0ff",  # Light blue
-    "#80ffb0",  # Light green
-    "#ffcc60",  # Yellow
-    "#ff9060",  # Coral
-]
 
 
 def fig_3d_orbits(sats):
-    """
-    Enhanced 3D orbit visualization with improved visual effects and performance.
-    Fixed syntax error: lighting dict now properly closed with ) instead of }
-    """
     now = ts.now()
     fig = go.Figure()
 
-    # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=180, style="night")  # night daha hafif
+    # Load Earth texture
+    earth = load_earth_texture(resolution=360, style="realistic")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1673,17 +657,21 @@ def fig_3d_orbits(sats):
                 surfacecolor=sc,
                 colorscale=cs,
                 showscale=False,
-                opacity=0.95,
+                opacity=1.0,
                 hoverinfo="skip",
                 name="Earth",
                 lightposition=dict(x=0, y=0, z=10000),
                 lighting=dict(
-                    ambient=0.5, diffuse=0.9, specular=0.1, roughness=0.8, fresnel=0.1
+                    ambient=0.6,
+                    diffuse=0.92,
+                    specular=0.04,
+                    roughness=0.85,
+                    fresnel=0.05,
                 ),
             )
         )
     else:
-        r = EARTH_RADIUS_KM
+        r = 6371
         u, v = np.mgrid[0 : 2 * np.pi : 40j, 0 : np.pi : 20j]
         fig.add_trace(
             go.Surface(
@@ -1691,14 +679,24 @@ def fig_3d_orbits(sats):
                 y=r * np.sin(u) * np.sin(v),
                 z=r * np.cos(v),
                 colorscale="Blues",
-                opacity=0.5,
+                opacity=0.4,
                 showscale=False,
             )
         )
 
-    # Use enhanced color palette
-    colors = ENHANCED_COLORS
-    offsets = np.linspace(0, 95, 40) / 1440.0
+    colors = [
+        "#00c8ff",
+        "#00ff9d",
+        "#ffaa00",
+        "#ff6b00",
+        "#c060ff",
+        "#ff2b4d",
+        "#60d0ff",
+        "#80ffb0",
+        "#ffcc60",
+        "#ff9060",
+    ]
+    offsets = np.linspace(0, 95, 80) / 1440.0
 
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
@@ -1717,17 +715,13 @@ def fig_3d_orbits(sats):
                     y=pos[1].tolist(),
                     z=pos[2].tolist(),
                     mode="lines",
-                    line=dict(color=c, width=3),
+                    line=dict(color=c, width=2.5),
                     name=sat.name,
-                    opacity=0.9,
-                    hovertemplate=f"<b>{sat.name}</b><br>"
-                    + "X: %{x:.1f} km<br>"
-                    + "Y: %{y:.1f} km<br>"
-                    + "Z: %{z:.1f} km<extra></extra>",
+                    opacity=0.95,
                 )
             )
 
-        # 2. Instantaneous position calculation with enhanced markers
+        # 2. Instantaneous position calculation with error handling
         try:
             p0 = sat.at(now).position.km
         except Exception:
@@ -1742,18 +736,12 @@ def fig_3d_orbits(sats):
                     mode="markers",
                     marker=dict(
                         color=c,
-                        size=8,
+                        size=6,
                         symbol="circle",
-                        line=dict(color="#ffffff", width=1.5),
-                        opacity=0.9,
+                        line=dict(color="#ffffff", width=1),
                     ),
-                    name=f"{sat.name} (current)",
+                    name=f"{sat.name} (now)",
                     showlegend=False,
-                    hovertemplate=f"<b>{sat.name}</b><br>"
-                    + "Current Position<br>"
-                    + "X: %{x:.1f} km<br>"
-                    + "Y: %{y:.1f} km<br>"
-                    + "Z: %{z:.1f} km<extra></extra>",
                 )
             )
 
@@ -1766,57 +754,52 @@ def fig_3d_orbits(sats):
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
             zaxis=dict(visible=False, showgrid=False, zeroline=False),
             aspectmode="cube",
-            camera=dict(eye=dict(x=2.2, y=2.2, z=1.2), up=dict(x=0, y=0, z=1)),
+            camera=dict(eye=dict(x=1.6, y=1.6, z=0.7), up=dict(x=0, y=0, z=1)),
         ),
         legend=dict(
-            font=dict(size=9, family="Space Mono", color="#c4d4e8"),
-            bgcolor="rgba(5,7,10,.9)",
-            bordercolor="#1e2d42",
+            font=dict(size=8, family="Space Mono"),
+            bgcolor="rgba(0,4,8,.85)",
+            bordercolor="#1a2740",
             borderwidth=1,
             x=0.01,
             y=0.99,
             itemsizing="constant",
-        ),
-        hoverlabel=dict(
-            bgcolor="rgba(10,15,24,.95)",
-            bordercolor="#00d4ff",
-            font_size=11,
-            font_family="Space Mono",
         ),
     )
     return fig
 
 
 def fig_ground_tracks(sats):
-    """
-    Enhanced ground track visualization with improved visual effects.
-    """
     now = ts.now()
     offsets = np.linspace(0, 95, 200) / 1440.0
-    colors = ENHANCED_COLORS
+    colors = [
+        "#00c8ff",
+        "#00ff9d",
+        "#ffaa00",
+        "#ff6b00",
+        "#c060ff",
+        "#ff2b4d",
+        "#60d0ff",
+        "#80ffb0",
+        "#ffcc60",
+        "#ff9060",
+    ]
     fig = go.Figure()
-
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
-        try:
-            geo = wgs84.subpoint_of(sat.at(times))
-            g0 = wgs84.subpoint_of(sat.at(now))
-        except Exception:
-            continue
+        geo = wgs84.subpoint_of(sat.at(times))
         c = colors[k % len(colors)]
         fig.add_trace(
             go.Scattergeo(
                 lat=geo.latitude.degrees,
                 lon=geo.longitude.degrees,
                 mode="lines",
-                line=dict(color=c, width=2.5),
+                line=dict(color=c, width=1.8),
                 name=sat.name,
-                opacity=0.9,
-                hovertemplate=f"<b>{sat.name}</b><br>"
-                + "Lat: %{lat:.2f}°<br>"
-                + "Lon: %{lon:.2f}°<extra></extra>",
+                opacity=0.85,
             )
         )
+        g0 = wgs84.subpoint_of(sat.at(ts.now()))
         fig.add_trace(
             go.Scattergeo(
                 lat=[g0.latitude.degrees],
@@ -1824,24 +807,19 @@ def fig_ground_tracks(sats):
                 mode="markers+text",
                 marker=dict(
                     color=c,
-                    size=10,
+                    size=9,
                     symbol="circle",
-                    line=dict(color="#ffffff", width=1.5),
-                    opacity=0.9,
+                    line=dict(color="#ffffff", width=1),
                 ),
                 text=[sat.name],
                 textposition="top right",
-                textfont=dict(size=9, family="Space Mono", color=c, weight="bold"),
+                textfont=dict(size=8, family="Space Mono", color=c),
                 showlegend=False,
-                hovertemplate=f"<b>{sat.name}</b><br>"
-                + "Current Position<br>"
-                + "Lat: %{lat:.2f}°<br>"
-                + "Lon: %{lon:.2f}°<extra></extra>",
             )
         )
     fig.update_layout(
         **DARK,
-        height=450,
+        height=420,
         margin=dict(l=0, r=0, t=30, b=0),
         geo=dict(
             showland=True,
@@ -1850,34 +828,34 @@ def fig_ground_tracks(sats):
             oceancolor="#050d18",
             showcoastlines=True,
             coastlinecolor="#2a5070",
-            coastlinewidth=1.0,
+            coastlinewidth=0.8,
             showcountries=True,
             countrycolor="#152535",
-            countrywidth=0.5,
+            countrywidth=0.4,
             showlakes=True,
             lakecolor="#080f1a",
             showrivers=True,
             rivercolor="#0a1828",
             showframe=False,
-            bgcolor="#05070a",
+            bgcolor="#07090f",
             projection_type="natural earth",
             resolution=50,
             lonaxis=dict(
                 range=[-180, 180],
                 showgrid=True,
-                gridcolor="rgba(30,45,66,.6)",
-                gridwidth=0.4,
+                gridcolor="rgba(26,39,64,.5)",
+                gridwidth=0.3,
             ),
             lataxis=dict(
                 range=[-90, 90],
                 showgrid=True,
-                gridcolor="rgba(30,45,66,.6)",
-                gridwidth=0.4,
+                gridcolor="rgba(26,39,64,.5)",
+                gridwidth=0.3,
             ),
         ),
         legend=dict(
-            font=dict(size=9, family="Space Mono", color="#c4d4e8"),
-            bgcolor="rgba(5,7,10,.9)",
+            font=dict(size=8, family="Space Mono"),
+            bgcolor="rgba(7,9,15,.85)",
             bordercolor="#1a2740",
             borderwidth=1,
             x=0.0,
@@ -1893,15 +871,14 @@ def fig_ground_tracks(sats):
     return fig
 
 
-@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
-def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
-    step_m = ANALYSIS_STEP_MIN
+def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km):
+    step_m = 5
     t_axis = np.arange(len(dist_arr)) * step_m / 60.0
     fig = go.Figure()
     fig.add_hline(
-        y=hbr_km,
+        y=0.02,
         line=dict(color="#ff2b4d", dash="dot", width=1),
-        annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
+        annotation_text="HBR (20 m)",
         annotation_font_size=9,
     )
     fig.add_hrect(
@@ -1921,22 +898,20 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
             fillcolor="rgba(0,200,255,.04)",
         )
     )
-    dist_np = np.asarray(dist_arr, dtype=float)
-    if len(dist_np) and not np.all(np.isnan(dist_np)):
-        tca_i = int(np.nanargmin(dist_np))
-        fig.add_trace(
-            go.Scatter(
-                x=[t_axis[tca_i]],
-                y=[dist_np[tca_i]],
-                mode="markers+text",
-                marker=dict(color="#ff2b4d", size=8),
-                text=[f" TCA: {dist_np[tca_i]:.1f} km"],
-                textposition="top right",
-                textfont=dict(size=9, family="Space Mono", color="#ff2b4d"),
-                name="TCA",
-                showlegend=False,
-            )
+    tca_i = int(np.argmin(dist_arr))
+    fig.add_trace(
+        go.Scatter(
+            x=[t_axis[tca_i]],
+            y=[dist_arr[tca_i]],
+            mode="markers+text",
+            marker=dict(color="#ff2b4d", size=8),
+            text=[f" TCA: {dist_arr[tca_i]:.1f} km"],
+            textposition="top right",
+            textfont=dict(size=9, family="Space Mono", color="#ff2b4d"),
+            name="TCA",
+            showlegend=False,
         )
+    )
     fig.update_layout(
         **DARK,
         height=280,
@@ -1963,7 +938,6 @@ def fig_distance_profile(dist_arr, window_hrs, miss_km, sigma_km, hbr_km=0.020):
     return fig
 
 
-@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_risk_gauge(pc: float):
     sev, color = risk_level(pc)
     fig = go.Figure(
@@ -2001,7 +975,6 @@ def fig_risk_gauge(pc: float):
     return fig
 
 
-@st.cache_data(show_spinner=False, ttl=1800)  # Cache for 30 minutes
 def fig_orbital_elements_radar(elems_list):
     """Display satellites by orbital elements using scatter plot."""
     fig = go.Figure()
@@ -2061,70 +1034,130 @@ def fig_orbital_elements_radar(elems_list):
 
 
 # ================================================================================
-#  LIVE 3D ANIMATION (Two Satellites — TCA Focused) — OPTİMİZE EDİLDİ
+#  CONJUNCTION ANALYSIS FOR OWN SATELLITE
+# ================================================================================
+def compute_conjunctions_custom(
+    my_sat,
+    sats: list,
+    window_hrs: int,
+    sigma_km: float,
+    mass_a_kg: float = 250.0,
+    mass_b_kg: float = 250.0,
+) -> pd.DataFrame:
+    """
+    Compares user's own satellite with existing satellite fleet.
+    Apsis filter + 5-min TCA scan + full Pc metrics.
+    """
+    now = ts.now()
+    step_m = 5
+    n_steps = window_hrs * 60 // step_m
+    R_E, GM = 6371.0, 398600.4418
+
+    def apsis(sat):
+        try:
+            n = sat.model.no_kozai / 60.0
+            a = (GM / n**2) ** (1 / 3)
+            e = sat.model.ecco
+            return a * (1 - e) - R_E, a * (1 + e) - R_E
+        except Exception:
+            return 0.0, 10000.0
+
+    my_q, my_Q = apsis(my_sat)
+    results = []
+
+    for sat in sats:
+        q, Q = apsis(sat)
+        # Apsis filter
+        if max(my_q, q) > min(my_Q, Q) + 100.0:
+            continue
+
+        min_d = np.inf
+        best_t = None
+        dist_arr = []
+
+        for i in range(n_steps):
+            t = ts.tt_jd(now.tt + i * step_m / 1440.0)
+            p1 = my_sat.at(t).position.km
+            p2 = sat.at(t).position.km
+            d = float(np.linalg.norm(p1 - p2))
+            dist_arr.append(d)
+            if d < min_d:
+                min_d, best_t = d, t
+
+        if min_d >= 500:
+            continue
+
+        rel_vel = _relative_velocity(my_sat, sat, best_t)
+        pc_iso = collision_probability_isotropic(min_d, sigma_km)
+        pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, sigma_km)
+        pc_max = max_pc_analysis(min_d)
+        mah = mahalanobis_test(min_d, sigma_km)
+        dil = dilution_check(pc_iso, sigma_km, min_d)
+        frag = fragmentation_probability(rel_vel, mass_a_kg, mass_b_kg)
+        sev, color = risk_level(pc_iso)
+
+        results.append(
+            {
+                "TCA (UTC)": best_t.utc_strftime("%Y-%m-%d %H:%M:%S"),
+                "Object A": my_sat.name,
+                "Object B": sat.name,
+                "Distance (km)": round(min_d, 3),
+                "Relative Velocity (km/s)": round(rel_vel, 3),
+                "Pc (isotropic)": pc_iso,
+                "Pc (Foster 2D)": pc_foster,
+                "Pc Max": pc_max,
+                "Pc (scientific)": f"{pc_iso:.3e}",
+                "Mahalanobis Md": mah["Md"],
+                "2D-Pc Valid": mah["label"],
+                "Dilution": dil["diluted"],
+                "Dilution Message": dil["msg"],
+                "Ec (J/g)": frag["E_c_J_per_g"],
+                "Fragmentation Level": frag["level"],
+                "Estimated Debris": frag["est_debris"],
+                "Risk Level": sev,
+                "_color": color,
+                "_dist_arr": dist_arr,
+                "_s1": my_sat,
+                "_s2": sat,
+            }
+        )
+
+    return pd.DataFrame(results)
+
+
 # ================================================================================
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
-
-
 def fig_animated_conjunction(
-    sat_a,
-    sat_b,
-    window_hrs: int = 6,
-    show_orbits: bool = True,
-    show_tca: bool = True,
-    center_tt: float = None,
-    frame_duration: int = 60,
+    sat_a, sat_b, window_hrs: int = 6, show_orbits: bool = True, show_tca: bool = True
 ):
     """
     3D Plotly figure showing two satellites with real-time animation.
     Robust version with error handling and fallback.
-    Precomputed star field for performance.
-    Fixed syntax error: lighting dict now properly closed with ) instead of }
-    Note: Not cached because EarthSatellite objects are not serializable.
     """
-    if ts is None:
-        print("Error: Timescale not initialized")
-        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([0.0]), 0.0
-
     now = ts.now()
     # Perf: coarser steps → fewer frames → faster WebGL rendering.
-    # max_frames=50: paylaşılan/düşük güçlü makinelerde (jüri sunumu vb.)
-    # de akıcı kalması için 96'dan düşürüldü. Her frame artık sadece 3 trace
-    # taşıdığı için (eskiden 5), toplam WebGL güncelleme yükü zaten
-    # ~3x azaldı; ek olarak frame sayısını da kısmak toplam yükü daha da düşürür.
-    sim_start_tt = (
-        float(center_tt) - (window_hrs / 2.0) / 24.0
-        if center_tt is not None
-        else now.tt
-    )
-    max_frames = 50
-    step_min = max(2, int(math.ceil(window_hrs * 60 / max_frames)))
-    n_frames = min(max(2, int(math.ceil(window_hrs * 60 / step_min)) + 1), max_frames)
+    # Target max ~120 frames so browser doesn't choke.
+    step_min = max(3, window_hrs * 60 // 120)
+    n_frames = min(window_hrs * 60 // step_min, 120)
     if n_frames < 2:
-        return (
-            go.Figure(),
-            0,
-            0.0,
-            np.array([0.0]),
-            np.array([sim_start_tt]),
-            sim_start_tt,
-        )
+        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([now.tt])
 
-    orbit_pts = 72
+    trail_len = 15  # was 25 — shorter trail = smaller Scatter3d per frame
+    orbit_pts = 80  # was 100
 
     # Full orbit paths (static background)
     orb_off = np.linspace(0, 96, orbit_pts) / 1440.0
     try:
-        orb_a = sat_a.at(ts.tt_jd(sim_start_tt + orb_off)).position.km
-        orb_b = sat_b.at(ts.tt_jd(sim_start_tt + orb_off)).position.km
+        orb_a = sat_a.at(ts.tt_jd(now.tt + orb_off)).position.km
+        orb_b = sat_b.at(ts.tt_jd(now.tt + orb_off)).position.km
     except Exception:
         orb_a = np.full((3, orbit_pts), np.nan)
         orb_b = np.full((3, orbit_pts), np.nan)
 
     # Animation step positions
     anim_off = np.arange(n_frames) * step_min / 1440.0
-    anim_jd = sim_start_tt + anim_off
+    anim_jd = now.tt + anim_off
     try:
         pos_a = sat_a.at(ts.tt_jd(anim_jd)).position.km
         pos_b = sat_b.at(ts.tt_jd(anim_jd)).position.km
@@ -2140,8 +1173,6 @@ def fig_animated_conjunction(
         tca_dist = 0.0
     else:
         tca_idx = int(np.nanargmin(dists))
-        if tca_idx < 0 or tca_idx >= n_frames:
-            tca_idx = 0
         tca_dist = float(dists[tca_idx])
 
     def dist_color(d):
@@ -2155,36 +1186,12 @@ def fig_animated_conjunction(
 
     fig = go.Figure()
 
-    # Precomputed star field (static)
-    rng = np.random.default_rng(7)
-    star_count = 90
-    star_phi = rng.uniform(0, 2 * np.pi, star_count)
-    star_costheta = rng.uniform(-1, 1, star_count)
-    star_theta = np.arccos(star_costheta)
-    star_r = rng.uniform(12500, 16500, star_count)
-    fig.add_trace(
-        go.Scatter3d(
-            x=(star_r * np.sin(star_theta) * np.cos(star_phi)).tolist(),
-            y=(star_r * np.sin(star_theta) * np.sin(star_phi)).tolist(),
-            z=(star_r * np.cos(star_theta)).tolist(),
-            mode="markers",
-            marker=dict(
-                size=rng.uniform(1.0, 2.4, star_count).tolist(),
-                color="rgba(210,235,255,0.55)",
-            ),
-            hoverinfo="skip",
-            showlegend=False,
-            name="Star field",
-        )
-    )
-
-    # Perf: lower resolution → fewer WebGL vertices → much faster render per frame.
-    # resolution=40 → grid is 40 x 80 = 3200 vertices (was 72x144=10368 → ~3.2x lighter).
-    # Bu değer sabit ve statik (frame başına yeniden çizilmiyor), bu yüzden
-    # görsel kalite kaybı animasyon sırasında neredeyse fark edilmiyor.
-    earth = load_earth_texture(resolution=40, style="night")
+    # Perf: lower resolution → fewer WebGL vertices → much faster render per frame
+    earth = load_earth_texture(resolution=80, style="night")
+    earth_data = None
     if earth:
         x, y, z, sc, cs = earth
+        earth_data = (x, y, z, sc, cs)
         fig.add_trace(
             go.Surface(
                 x=x,
@@ -2193,17 +1200,15 @@ def fig_animated_conjunction(
                 surfacecolor=sc,
                 colorscale=cs,
                 showscale=False,
-                opacity=0.98,
+                opacity=1.0,
                 hoverinfo="skip",
                 lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(
-                    ambient=0.72, diffuse=0.88, specular=0.05, roughness=0.82
-                ),
+                lighting=dict(ambient=0.6, diffuse=0.9, specular=0.03, roughness=0.85),
                 name="Earth",
             )
         )
     else:
-        r = EARTH_RADIUS_KM
+        r = 6371.0
         u, v = np.mgrid[0 : 2 * np.pi : 120j, 0 : np.pi : 60j]
         colorscale_earth = [
             [0.0, "#081828"],
@@ -2229,7 +1234,7 @@ def fig_animated_conjunction(
 
     # Coordinate reference lines — MINIMAL set (was 20 traces, now 3).
     # Fewer static traces = dramatically faster per-frame WebGL redraw.
-    r_earth = EARTH_RADIUS_KM
+    r_earth = 6371.0
     _pts = 80
     _lat_pm = np.linspace(-np.pi / 2, np.pi / 2, _pts)
     _lon_eq = np.linspace(-np.pi, np.pi, _pts)
@@ -2278,7 +1283,7 @@ def fig_animated_conjunction(
                 y=orb_a[1].tolist(),
                 z=orb_a[2].tolist(),
                 mode="lines",
-                line=dict(color="rgba(0,200,255,0.22)", width=2),
+                line=dict(color="rgba(0,200,255,0.12)", width=1.5),
                 name=sat_a.name + " orbit",
                 showlegend=False,
             )
@@ -2291,7 +1296,7 @@ def fig_animated_conjunction(
                 y=orb_b[1].tolist(),
                 z=orb_b[2].tolist(),
                 mode="lines",
-                line=dict(color="rgba(255,107,0,0.22)", width=2),
+                line=dict(color="rgba(255,107,0,0.12)", width=1.5),
                 name=sat_b.name + " orbit",
                 showlegend=False,
             )
@@ -2299,52 +1304,6 @@ def fig_animated_conjunction(
 
     # TCA point
     mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
-    pa_tca = pos_a[:, tca_idx]
-    pb_tca = pos_b[:, tca_idx]
-
-    if show_tca and not np.any(np.isnan(mid_tca)):
-        ring_radius = max(140.0, min(900.0, max(tca_dist * 1.6, 180.0)))
-        ring_angle = np.linspace(0, 2 * np.pi, 96)
-        normal = (
-            mid_tca / np.linalg.norm(mid_tca)
-            if np.linalg.norm(mid_tca) > 0
-            else np.array([0.0, 0.0, 1.0])
-        )
-        basis_a = np.cross(normal, np.array([0.0, 0.0, 1.0]))
-        if np.linalg.norm(basis_a) < 1e-6:
-            basis_a = np.cross(normal, np.array([0.0, 1.0, 0.0]))
-        basis_a = basis_a / np.linalg.norm(basis_a)
-        basis_b = np.cross(normal, basis_a)
-        ring = (
-            mid_tca[:, None]
-            + ring_radius * np.cos(ring_angle)[None, :] * basis_a[:, None]
-            + ring_radius * np.sin(ring_angle)[None, :] * basis_b[:, None]
-        )
-        fig.add_trace(
-            go.Scatter3d(
-                x=ring[0].tolist(),
-                y=ring[1].tolist(),
-                z=ring[2].tolist(),
-                mode="lines",
-                line=dict(color="rgba(255,43,77,0.55)", width=3),
-                hoverinfo="skip",
-                showlegend=False,
-                name="TCA risk zone",
-            )
-        )
-        if not np.any(np.isnan(pa_tca)) and not np.any(np.isnan(pb_tca)):
-            fig.add_trace(
-                go.Scatter3d(
-                    x=[float(pa_tca[0]), float(pb_tca[0])],
-                    y=[float(pa_tca[1]), float(pb_tca[1])],
-                    z=[float(pa_tca[2]), float(pb_tca[2])],
-                    mode="lines",
-                    line=dict(color="rgba(255,43,77,0.72)", width=4, dash="dot"),
-                    hoverinfo="skip",
-                    showlegend=False,
-                    name="Closest approach chord",
-                )
-            )
 
     # ── TCA-FACING CAMERA ALGORITHM ──────────────────────────────────────────
     # Strategy: position camera in the direction of TCA from Earth center so
@@ -2403,143 +1362,148 @@ def fig_animated_conjunction(
             )
         )
 
-    # ── PERF REWRITE: Trail'ler artık STATİK ─────────────────────────────────
-    # Eskiden her frame'de "kayan pencere" (trail_len noktalık) yeniden
-    # hesaplanıp yeni bir Scatter3d nesnesi olarak yollanıyordu (frame başına
-    # 2 trace). Bu, n_frames sayısı kadar Python nesnesi + WebGL güncellemesi
-    # demekti. Artık tüm animasyon penceresindeki iz TEK SEFERDE, statik
-    # olarak çiziliyor; frame'ler sadece hareketli marker'ları günceller.
-    if pos_a.shape[1] > 0 and not np.all(np.isnan(pos_a)):
-        fig.add_trace(
-            go.Scatter3d(
-                x=pos_a[0].tolist(),
-                y=pos_a[1].tolist(),
-                z=pos_a[2].tolist(),
-                mode="lines",
-                line=dict(color="rgba(0,200,255,0.65)", width=3.5),
-                name=sat_a.name + " track",
-                showlegend=False,
-                hoverinfo="skip",
-            )
-        )
-    if pos_b.shape[1] > 0 and not np.all(np.isnan(pos_b)):
-        fig.add_trace(
-            go.Scatter3d(
-                x=pos_b[0].tolist(),
-                y=pos_b[1].tolist(),
-                z=pos_b[2].tolist(),
-                mode="lines",
-                line=dict(color="rgba(255,107,0,0.65)", width=3.5),
-                name=sat_b.name + " track",
-                showlegend=False,
-                hoverinfo="skip",
-            )
-        )
-
     n_static = len(fig.data)
+
+    def rotate_earth(x, y, z, angle_rad):
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+        return x * cos_a - y * sin_a, x * sin_a + y * cos_a, z
 
     def make_dynamic_traces(i):
         """
-        Always returns EXACTLY 3 traces (Plotly frame update requires fixed count).
-        (Eskiden 5'ti: trail A, trail B, marker A, marker B, distance line.
-        Trail'ler artık statik — bkz. yukarısı. Mesafe metni de kaldırıldı;
-        değer artık başlıkta gösteriliyor, çünkü 3D WebGL'de her frame'de
-        text glyph güncellemek pahalı.)
+        Always returns EXACTLY 5 traces (Plotly frame update requires fixed count).
         Earth rotation removed — static Earth stays in base figure (memory + speed fix).
         """
+        t0 = max(0, i - trail_len)
+        ta = pos_a[:, t0 : i + 1]
+        tb = pos_b[:, t0 : i + 1]
         pa = pos_a[:, i]
         pb = pos_b[:, i]
         d_val = dists[i]
         dc = dist_color(d_val)
-        beam_width = 4 if not np.isnan(d_val) and d_val < 200 else 3
+        dist_txt = f"  Δ {d_val:.1f} km" if not np.isnan(d_val) else ""
 
-        # Trace 0 — Position marker A
-        if not np.any(np.isnan(pa)):
+        # Trace 0 — Trail A
+        if ta.shape[1] > 0 and not np.all(np.isnan(ta)):
             tr0 = go.Scatter3d(
+                x=ta[0].tolist(),
+                y=ta[1].tolist(),
+                z=ta[2].tolist(),
+                mode="lines",
+                line=dict(color="#00c8ff", width=2.5),
+                name=sat_a.name,
+                showlegend=False,
+            )
+        else:
+            tr0 = go.Scatter3d(
+                x=[],
+                y=[],
+                z=[],
+                mode="lines",
+                line=dict(color="#00c8ff", width=2.5),
+                name=sat_a.name,
+                showlegend=False,
+            )
+
+        # Trace 1 — Trail B
+        if tb.shape[1] > 0 and not np.all(np.isnan(tb)):
+            tr1 = go.Scatter3d(
+                x=tb[0].tolist(),
+                y=tb[1].tolist(),
+                z=tb[2].tolist(),
+                mode="lines",
+                line=dict(color="#ff6b00", width=2.5),
+                name=sat_b.name,
+                showlegend=False,
+            )
+        else:
+            tr1 = go.Scatter3d(
+                x=[],
+                y=[],
+                z=[],
+                mode="lines",
+                line=dict(color="#ff6b00", width=2.5),
+                name=sat_b.name,
+                showlegend=False,
+            )
+
+        # Trace 2 — Position marker A
+        if not np.any(np.isnan(pa)):
+            tr2 = go.Scatter3d(
                 x=[float(pa[0])],
                 y=[float(pa[1])],
                 z=[float(pa[2])],
                 mode="markers",
-                marker=dict(
-                    color="#00c8ff",
-                    size=12,
-                    symbol="diamond",
-                    line=dict(color="#ffffff", width=1.2),
-                    opacity=0.98,
-                ),
+                marker=dict(color="#00c8ff", size=9, line=dict(color="#fff", width=1)),
                 name=sat_a.name + " pos",
                 showlegend=False,
             )
         else:
-            tr0 = go.Scatter3d(
+            tr2 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
                 mode="markers",
-                marker=dict(color="#00c8ff", size=12, symbol="diamond"),
+                marker=dict(color="#00c8ff", size=9),
                 name=sat_a.name + " pos",
                 showlegend=False,
             )
 
-        # Trace 1 — Position marker B
+        # Trace 3 — Position marker B
         if not np.any(np.isnan(pb)):
-            tr1 = go.Scatter3d(
+            tr3 = go.Scatter3d(
                 x=[float(pb[0])],
                 y=[float(pb[1])],
                 z=[float(pb[2])],
                 mode="markers",
-                marker=dict(
-                    color="#ff6b00",
-                    size=12,
-                    symbol="circle",
-                    line=dict(color="#ffffff", width=1.2),
-                    opacity=0.98,
-                ),
+                marker=dict(color="#ff6b00", size=9, line=dict(color="#fff", width=1)),
                 name=sat_b.name + " pos",
                 showlegend=False,
             )
         else:
-            tr1 = go.Scatter3d(
+            tr3 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
                 mode="markers",
-                marker=dict(color="#ff6b00", size=12, symbol="circle"),
+                marker=dict(color="#ff6b00", size=9),
                 name=sat_b.name + " pos",
                 showlegend=False,
             )
 
-        # Trace 2 — Distance line (metin YOK — 3D WebGL'de her frame'de text
-        # glyph güncellemek pahalıydı; mesafe değeri artık başlıkta gösteriliyor)
+        # Trace 4 — Distance line
         if not np.any(np.isnan(pa)) and not np.any(np.isnan(pb)):
-            tr2 = go.Scatter3d(
+            tr4 = go.Scatter3d(
                 x=[float(pa[0]), float(pb[0])],
                 y=[float(pa[1]), float(pb[1])],
                 z=[float(pa[2]), float(pb[2])],
-                mode="lines",
-                line=dict(color=dc, width=beam_width, dash="dot"),
+                mode="lines+text",
+                line=dict(color=dc, width=2, dash="dot"),
+                text=["", dist_txt],
+                textfont=dict(color=dc, size=9, family="Space Mono"),
                 name="Distance",
                 showlegend=False,
             )
         else:
-            tr2 = go.Scatter3d(
+            tr4 = go.Scatter3d(
                 x=[],
                 y=[],
                 z=[],
                 mode="lines",
-                line=dict(color=dc, width=beam_width, dash="dot"),
+                line=dict(color=dc, width=2, dash="dot"),
                 name="Distance",
                 showlegend=False,
             )
 
-        return [tr0, tr1, tr2]
+        return [tr0, tr1, tr2, tr3, tr4]
 
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
 
-    n_dynamic = 3  # her zaman 3 dinamik trace (marker A, marker B, mesafe çizgisi)
-    # Eğer fig.data içinde eksik trace varsa, yine de 3 eklenmiş olmalı.
-    # Aşağıda dyn_indices kullanımı:
+    n_dynamic = len(fig.data) - n_static
+    if n_dynamic == 0:
+        return fig, tca_idx, tca_dist, dists, anim_jd
+
     dyn_indices = list(range(n_static, n_static + n_dynamic))
 
     frames = []
@@ -2565,7 +1529,7 @@ def fig_animated_conjunction(
             dict(
                 args=[
                     [str(i)],
-                    dict(frame=dict(duration=0, redraw=False), mode="immediate"),
+                    dict(frame=dict(duration=0, redraw=True), mode="immediate"),
                 ],
                 label=lbl,
                 method="animate",
@@ -2624,7 +1588,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(n_frames)],
                             dict(
-                                frame=dict(duration=frame_duration, redraw=False),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2636,7 +1600,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 2)],
                             dict(
-                                frame=dict(duration=frame_duration, redraw=False),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2648,7 +1612,7 @@ def fig_animated_conjunction(
                         args=[
                             [str(k) for k in range(0, n_frames, 5)],
                             dict(
-                                frame=dict(duration=frame_duration, redraw=False),
+                                frame=dict(duration=60, redraw=True),
                                 fromcurrent=True,
                                 mode="immediate",
                             ),
@@ -2669,9 +1633,7 @@ def fig_animated_conjunction(
                         method="animate",
                         args=[
                             [str(tca_idx)],
-                            dict(
-                                frame=dict(duration=0, redraw=False), mode="immediate"
-                            ),
+                            dict(frame=dict(duration=0, redraw=True), mode="immediate"),
                         ],
                     ),
                 ],
@@ -2695,8 +1657,7 @@ def fig_animated_conjunction(
             )
         ],
     )
-    tca_tt = anim_jd[tca_idx]  # TCA zamanını anim_jd'den al
-    return fig, tca_idx, tca_dist, dists, anim_jd, tca_tt
+    return fig, tca_idx, tca_dist, dists, anim_jd
 
 
 # ================================================================================
@@ -2708,25 +1669,22 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# Apply theme CSS
-st.markdown(
-    get_theme_css(st.session_state.get("theme", "dark")), unsafe_allow_html=True
-)
+st.markdown(STYLE, unsafe_allow_html=True)
 
 st.markdown(
     """
-<div style="padding:16px 0 8px 0; border-bottom:2px solid #1e2d42; margin-bottom:24px;">
-  <h1 style="margin:0; font-size:1.8rem; line-height:1.3; font-family:'Barlow Condensed',sans-serif; font-weight:700; color:#fff;">
-    StarWeb-CARA
-  </h1>
-  <div style="font-family:'Inter',sans-serif; font-size:.85rem;
-              color:#5a7a94; margin-top:4px; letter-spacing:.04em; font-weight:400;">
-    Conjunction Assessment and Collision Risk Analysis for LEO Megaconstellations
+<div style="padding:20px 0 8px 0; border-bottom:1px solid #1a2740; margin-bottom:20px;">
+  <div style="font-family:'Space Mono',monospace; font-size:.68rem;
+              color:#4a6880; letter-spacing:.2em; text-transform:uppercase; margin-bottom:4px;">
+    Conjunction Assessment and Collision Risk Analysis (starlink/oneweb)
   </div>
-  <div style="font-family:'Space Mono',monospace; font-size:.65rem;
-              color:#3a5a74; margin-top:2px; letter-spacing:.02em;">
-    Space Sciences and Technologies · Altay ÇAVUŞ 2026 · Skyfield SGP4 · Space-Track GP
+  <h1 style="margin:0; padding:0; font-size:1.7rem;">
+    Low Earth Orbit<br>
+    <span style="color:#00c8ff;">Conjunction Assessment &amp; Collision Risk Analysis </span>
+  </h1>
+  <div style="font-family:'Barlow Condensed',sans-serif; font-size:.95rem;
+              color:#4a6880; margin-top:6px; letter-spacing:.05em;">
+    Space Sciences and Technologies Graduation Project · Space-Track GP Database · Skyfield SGP4 Propagator
   </div>
 </div>
 """,
@@ -2734,107 +1692,60 @@ st.markdown(
 )
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────
-
-st.sidebar.markdown(
-    """
-<div style="padding:16px 0 12px 0; border-bottom:2px solid #1e2d42; margin-bottom:20px;">
-  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.2rem;
-              font-weight:700; color:#00d4ff; letter-spacing:.06em; text-transform:uppercase;
-              margin-bottom:2px;">
-    CONTROL PANEL
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+st.sidebar.markdown("### CONTROL PANEL")
 
 # ─── SECTION 1: AUTO TLE DOWNLOAD ─────────────────────────────────────────
-
 st.sidebar.markdown(
-    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
-    font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
-    AUTO TLE DOWNLOAD</div>""",
+    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
+    letter-spacing:.15em;color:#00c8ff;text-transform:uppercase;
+    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
+    1 — AUTO TLE DOWNLOAD</div>""",
     unsafe_allow_html=True,
 )
-
-st.sidebar.markdown(
-    """<div style="font-family:'Inter',sans-serif; font-size:.85rem;
-                color:#c4d4e8; font-weight:600; margin-bottom:8px;">
-    Space-Track Authentication
-  </div>""",
-    unsafe_allow_html=True,
-)
+st.sidebar.markdown("**Space-Track Authentication**")
 user_email = st.sidebar.text_input("Email", placeholder="user@domain.com")
 user_pass = st.sidebar.text_input("Password", placeholder="........", type="password")
 st.sidebar.markdown("**Target Satellite Constellation** *(focused on LEO fleets only)*")
 search_term = st.sidebar.selectbox(
-    "Select constellation",
-    list(GROUP_CONFIG.keys()),
-    label_visibility="collapsed",
+    "Select constellation", list(GROUP_CONFIG.keys()), label_visibility="collapsed"
 )
 if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
     if user_email and user_pass:
-        with st.spinner("📡 Connecting to data sources..."):
-            try:
-                download_limit = int(st.session_state.get("sat_limit", 15))
-                result = fetch_tles_with_fallback(
-                    user_email, user_pass, search_term, download_limit
-                )
-                if result:
-                    data = result["lines"]
-                    st.session_state["tle_data"] = data
-                    st.session_state["loaded_group"] = GROUP_CONFIG[search_term][
-                        "label"
-                    ]
-                    st.session_state["data_source"] = result["source"]
-                    st.session_state["data_message"] = result["message"]
-                    count = count_tle_objects(data)
-                    pair_count = count * (count - 1) // 2
-                    st.sidebar.success(
-                        f"✅ {count} satellites loaded • {pair_count} possible pairs"
-                    )
-                    st.sidebar.caption(
-                        "🎯 Apsis filter will eliminate pairs with low physical intersection probability."
-                    )
-                    st.sidebar.info(f"📊 Source: {result['source']}")
-                    st.sidebar.caption(result["message"])
-                else:
-                    st.sidebar.error(
-                        "❌ Failed to download TLE data. Please try again."
-                    )
-            except Exception as e:
-                st.sidebar.error(f"❌ Download error: {str(e)[:100]}")
-    else:
-        st.sidebar.warning("⚠️ Authentication required. Please enter your credentials.")
+        with st.spinner("Connecting to Space-Track database..."):
+            result = fetch_tles_with_fallback(user_email, user_pass, search_term)
 
-st.sidebar.markdown(
-    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
-                margin:20px 0;"></div>""",
-    unsafe_allow_html=True,
-)
+            if result:
+                data = result["lines"]
+                st.session_state["tle_data"] = data
+                st.session_state["loaded_group"] = search_term
+                st.session_state["data_source"] = result["source"]
+
+                is3 = not (data[0].startswith("1 ") or data[0].startswith("2 "))
+                count = len(data) // 3 if is3 else len(data) // 2
+
+                st.sidebar.success(f"{count} satellites loaded.")
+                st.sidebar.info(f"Kaynak: {result['source']}")
+    else:
+        st.sidebar.warning("Authentication required.")
+
+st.sidebar.markdown("---")
 
 # ─── SECTION 2: MANUAL TLE ENTRY ─────────────────────────────────────────────
-
 st.sidebar.markdown(
-    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
-    font-weight:600; letter-spacing:.06em; color:#00ffa8; text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
-    MANUAL TLE ENTRY</div>""",
+    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
+    letter-spacing:.15em;color:#00ff9d;text-transform:uppercase;
+    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
+    2 — ENTER YOUR SATELLITE (TLE)</div>""",
     unsafe_allow_html=True,
 )
-
 st.sidebar.markdown(
-    """<div style="font-family:'Inter',sans-serif; font-size:.75rem;
-                color:#5a7a94; margin-bottom:10px; font-style:italic;">
-    3-line TLE format (name + line1 + line2)
-  </div>""",
+    "<small style='color:#4a6880;'>3-line TLE (name + line1 + line2)</small>",
     unsafe_allow_html=True,
 )
 manual_tle_text = st.sidebar.text_area(
     "Manual TLE",
     height=110,
-    placeholder="ISS (ZARYA)\n1 25544U 98067A   24065.52722916  .00016717  00000+0  32296-3 0  9994\n2 25544  51.6412  237.8783 0003724 100.6644  259.4049 15.50110392 44874",
+    placeholder="MY-SAT\n1 99999U ...\n2 99999  ...",
     label_visibility="collapsed",
     key="manual_tle_input",
 )
@@ -2844,26 +1755,25 @@ if st.sidebar.button("LOAD MANUAL TLE"):
         try:
             my_sat = EarthSatellite(lines[1], lines[2], lines[0], ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success(f"✅ {my_sat.name} loaded successfully.")
+            st.sidebar.success(f"✓ {my_sat.name} loaded.")
         except Exception as e:
-            st.sidebar.error(f"❌ TLE parsing error: {str(e)[:80]}")
+            st.sidebar.error(f"TLE error: {e}")
     elif len(lines) == 2:
         try:
             my_sat = EarthSatellite(lines[0], lines[1], "CUSTOM-SAT", ts)
             st.session_state["my_sat"] = my_sat
-            st.sidebar.success("✅ CUSTOM-SAT loaded successfully.")
+            st.sidebar.success("✓ CUSTOM-SAT loaded.")
         except Exception as e:
-            st.sidebar.error(f"❌ TLE parsing error: {str(e)[:80]}")
+            st.sidebar.error(f"TLE error: {e}")
     else:
-        st.sidebar.warning("⚠️ Please enter at least 2 TLE lines.")
+        st.sidebar.warning("Enter at least 2 TLE lines.")
 
 if "my_sat" in st.session_state:
     ms = st.session_state["my_sat"]
     st.sidebar.markdown(
-        f"""<div style="font-family:'Space Mono',monospace;font-size:.7rem;
-        color:#00ffa8;padding:10px 14px;background:rgba(0,255,168,.08);
-        border:1px solid rgba(0,255,168,.25);border-radius:6px;margin-top:8px;
-        box-shadow: 0 2px 8px rgba(0,255,168,0.15);">
+        f"""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
+        color:#00ff9d;padding:6px 10px;background:rgba(0,255,157,.05);
+        border:1px solid rgba(0,255,157,.2);border-radius:2px;margin-top:4px;">
         ✓ ACTIVE: {ms.name}</div>""",
         unsafe_allow_html=True,
     )
@@ -2871,145 +1781,59 @@ if "my_sat" in st.session_state:
         del st.session_state["my_sat"]
         st.rerun()
 
+st.sidebar.markdown("---")
 st.sidebar.markdown(
-    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
-                margin:20px 0;"></div>""",
+    """<div style="font-family:'Space Mono',monospace;font-size:.65rem;
+    letter-spacing:.15em;color:#4a6880;text-transform:uppercase;
+    border-bottom:1px solid #1a2740;padding-bottom:4px;margin-bottom:8px;">
+    3 — ANALYSIS PARAMETERS</div>""",
     unsafe_allow_html=True,
 )
-
-st.sidebar.markdown(
-    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
-    font-weight:600; letter-spacing:.06em; color:#5a7a94; text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
-    ANALYSIS PARAMETERS</div>""",
-    unsafe_allow_html=True,
-)
-
-sync_mass_defaults(search_term)
-selected_group_label = GROUP_CONFIG[search_term]["label"]
-selected_group_mass = get_group_default_mass(search_term)
-
-if "my_sat" in st.session_state:
-    st.sidebar.markdown(
-        f"""<div style="font-family:'Space Mono',monospace;font-size:.64rem;color:#4a6880;
-        padding:6px 0 8px 0;line-height:1.6;">
-        Object A default: <span style="color:#00ff9d;">MANUAL SAT • {MANUAL_SAT_DEFAULT_MASS_KG} kg</span><br>
-        Object B default: <span style="color:#00c8ff;">{selected_group_label} • {selected_group_mass} kg</span>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-else:
-    st.sidebar.markdown(
-        f"""<div style="font-family:'Space Mono',monospace;font-size:.64rem;color:#4a6880;
-        padding:6px 0 8px 0;line-height:1.6;">
-        Selected fleet: <span style="color:#00c8ff;">{selected_group_label} • {selected_group_mass} kg</span>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-
-window_hrs = st.sidebar.slider(
-    "Analysis window (hours)", 1, 48, 24, key="sidebar_window_hrs"
-)
+window_hrs = st.sidebar.slider("Analysis window (hours)", 1, 48, 24)
 sigma_km = st.sidebar.select_slider(
     "Position uncertainty σ (km)",
     options=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0],
     value=0.5,
 )
-sat_limit = st.sidebar.slider("Maximum satellite count", 5, 30, 15, key="sat_limit")
+sat_limit = st.sidebar.slider("Maximum satellite count", 5, 30, 15)
 hbr_km = st.sidebar.select_slider(
     "Hard-Body Radius HBR (km)",
     options=[0.005, 0.010, 0.020, 0.050, 0.100],
     value=0.020,
 )
-mass_a_label = "Object A Mass (kg)"
-mass_b_label = "Object B Mass (kg)"
-if "my_sat" in st.session_state:
-    mass_a_label = "Object A Mass (Manual Sat)"
-    mass_b_label = f"Object B Mass ({selected_group_label})"
-
-st.sidebar.markdown(
-    "<small style='color:#4a6880;'>Allowed range: 1–500000 kg. Type the value directly.</small>",
-    unsafe_allow_html=True,
-)
-
-st.sidebar.markdown(f"**{mass_a_label}**")
-mass_a_kg = st.sidebar.number_input(
-    "Write Object A Mass (kg)",
-    min_value=1.0,
-    max_value=MASS_WIDGET_MAX_KG,
-    value=float(
-        st.session_state.get(
-            "mass_a_input", st.session_state.get("mass_a_kg", selected_group_mass)
-        )
-    ),
-    step=1.0,
-    format="%.3f",
-    key="mass_a_input",
-    on_change=sync_mass_a_from_input,
-    help="Allowed range: 1-500000 kg. Example: 630 or 419725.",
-)
-
-st.sidebar.markdown(f"**{mass_b_label}**")
-mass_b_kg = st.sidebar.number_input(
-    "Write Object B Mass (kg)",
-    min_value=1.0,
-    max_value=MASS_WIDGET_MAX_KG,
-    value=float(
-        st.session_state.get(
-            "mass_b_input", st.session_state.get("mass_b_kg", selected_group_mass)
-        )
-    ),
-    step=1.0,
-    format="%.3f",
-    key="mass_b_input",
-    on_change=sync_mass_b_from_input,
-    help="Allowed range: 1-500000 kg. Example: 250 or 419725.",
-)
-
-mass_a_kg = float(st.session_state.get("mass_a_kg", mass_a_kg))
-mass_b_kg = float(st.session_state.get("mass_b_kg", mass_b_kg))
+mass_a_kg = st.sidebar.slider("Object A Mass (kg)", 10, 5000, 250)
+mass_b_kg = st.sidebar.slider("Object B Mass (kg)", 10, 5000, 250)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 **Model:** Chan 1997 + Foster 1992
 **Propagator:** SGP4/SDP4
 **Filter:** Apsis + Distance
-**Data:** Space-Track GP + CelesTrak fallback
+**Data:** Space-Track GP
 **TCA Step:** 5 min
 **HBR:** User selected
 """)
 
 # DATA CHECK
 if "tle_data" not in st.session_state:
-    st.info(
-        "📡 Download data by entering your Space-Track credentials in the left panel."
-    )
+    st.info("Download data by entering your Space-Track credentials in the left panel.")
     st.markdown(
         """
     <div class="info-panel">
-      <b>🚀 Quick Start Guide:</b><br>
+      <b>How to use?</b><br>
       1. Create a free account at <b>space-track.org</b>.<br>
       2. Enter your email and password in the left panel.<br>
       3. Select a satellite constellation and click <b>DOWNLOAD LIVE TLE DATA</b>.<br>
-      4. If Space-Track fails, CelesTrak will be used automatically as backup.<br>
-      5. All tabs will become active for analysis.
+      4. All tabs will become active.
     </div>
     """,
         unsafe_allow_html=True,
     )
     st.stop()
 
-try:
-    sats = parse_tles(
-        st.session_state["tle_data"],
-        limit=sat_limit,
-        fallback_name_prefix=st.session_state.get("loaded_group"),
-    )
-    if not sats:
-        st.error("❌ TLE parsing failed. Please check your data source and try again.")
-        st.stop()
-except Exception as e:
-    st.error(f"❌ Error parsing TLE data: {str(e)[:100]}")
+sats = parse_tles(st.session_state["tle_data"], limit=sat_limit)
+if not sats:
+    st.error("TLE parsing failed.")
     st.stop()
 
 # TABS
@@ -3027,48 +1851,38 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
 
 # ── TAB 1: DASHBOARD ───────────────────────────────────────────────────
 with tab1:
-    with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
-        start_time = time.time()
+    with st.spinner("Apsis filter + conjunction analysis..."):
         df, n_filtered, n_total = compute_conjunctions(
-            sats,
-            window_hrs,
-            sigma_km,
-            hbr_km,
-            mass_a_kg,
-            mass_b_kg,
-            st.session_state.theme,
+            sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg
         )
-        computation_time = time.time() - start_time
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     st.markdown(
-        f"""<div style="font-family:'Space Mono',monospace; font-size:.7rem;
-         color:#5a7a94; text-align:right; margin-bottom:16px; padding:8px 12px;
-         background:rgba(90,122,148,.05); border-radius:6px; border:1px solid rgba(90,122,148,.15);">
-         Last update: {now_str} · Computation time: {computation_time:.2f}s</div>""",
+        f"""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
+         color:#4a6880; text-align:right; margin-bottom:14px;">Last update: {now_str}</div>""",
         unsafe_allow_html=True,
     )
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
-        st.metric("🛰️ Tracked Satellites", len(sats))
+        st.metric("Tracked Satellites", len(sats))
     with c2:
-        st.metric("🔗 Total Pairs", n_total)
+        st.metric("Total Pairs", n_total)
     with c3:
-        st.metric("✅ Passed Filter", n_total - n_filtered)
+        st.metric("Passed Apsis Filter", n_total - n_filtered)
     with c4:
         n_conj = len(df) if not df.empty else 0
-        st.metric("⚠️ Conjunctions", n_conj)
+        st.metric("Conjunction Events (<500km)", n_conj)
     with c5:
         n_crit = len(df[df["Risk Level"] == "CRITICAL"]) if not df.empty else 0
-        st.metric("🚨 Critical Risk", n_crit)
+        st.metric("Critical Risk", n_crit)
 
     if n_filtered > 0:
         st.markdown(
             f"""<div class="info-panel">
-        <b>🎯 Apsis Filter Performance:</b> {n_filtered} pairs filtered without orbit propagation
+        <b>Apsis Filter:</b> {n_filtered} pairs filtered without orbit propagation
         due to non-overlapping altitude bands — computation time reduced by
-        <span style="color:#00ffa8; font-weight:700;">{round(n_filtered / n_total * 100, 1)}%</span>.
+        %{round(n_filtered / n_total * 100, 1)}.
         </div>""",
             unsafe_allow_html=True,
         )
@@ -3077,7 +1891,7 @@ with tab1:
 
     if df.empty:
         st.success(
-            f"✅ No conjunctions below 500 km detected in {window_hrs}-hour window. All clear!"
+            f"No conjunctions below 500 km detected in {window_hrs}-hour window."
         )
     else:
         # Dilution warning
@@ -3152,7 +1966,7 @@ with tab1:
         )
         csv_bytes = df_show.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            "📥 Download Report as CSV",
+            "Download Report as CSV",
             data=csv_bytes,
             file_name=f"conjunction_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv",
@@ -3162,9 +1976,9 @@ with tab1:
 # ── TAB 2: CONJUNCTION ANALYSIS ─────────────────────────────────────────────────
 with tab2:
     if df is None or df.empty:
-        st.success("✅ No critical conjunction events in selected window.")
+        st.success("No critical conjunction events in selected window.")
     else:
-        st.markdown("**🔍 Detailed Review — Select Event**")
+        st.markdown("**Detailed Review — Select Event**")
         options = [
             f"{r['Object A']}  <->  {r['Object B']}  |  TCA {r['TCA (UTC)']}  |  {r['Distance (km)']} km"
             for _, r in df.iterrows()
@@ -3177,7 +1991,7 @@ with tab2:
         if row["Dilution"]:
             st.markdown(
                 f"""<div class="crit-panel">
-            <b>⚠️ PROBABILITY DILUTION:</b> {row["Dilution Message"]}
+            <b>PROBABILITY DILUTION:</b> {row["Dilution Message"]}
             </div>""",
                 unsafe_allow_html=True,
             )
@@ -3187,7 +2001,7 @@ with tab2:
         with col_l:
             st.plotly_chart(
                 fig_distance_profile(
-                    row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km, hbr_km
+                    row["_dist_arr"], window_hrs, row["Distance (km)"], sigma_km
                 ),
                 use_container_width=True,
                 key="dist_prof_tab2",
@@ -3200,7 +2014,7 @@ with tab2:
             )
 
         # Pc comparison
-        st.markdown("**📊 Collision Probability Model Comparison**")
+        st.markdown("**Collision Probability Model Comparison**")
         pc_cols = st.columns(3)
         with pc_cols[0]:
             st.metric("Chan 1997 (Isotropic)", f"{row['Pc (isotropic)']:.3e}")
@@ -3210,24 +2024,18 @@ with tab2:
             st.metric("Max Pc (Worst Case)", f"{row['Pc Max']:.3e}")
 
         # Mahalanobis test
-        theme = st.session_state.theme
-        if row["2D-Pc Valid"] != "2D-Pc Valid":
-            mah_color = "#dc3545" if theme == "light" else "#ff3d5c"
-        else:
-            mah_color = "#28a745" if theme == "light" else "#00ffa8"
+        mah_color = "#ff2b4d" if row["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
         st.markdown(
             f"""<div class="info-panel">
-        <b>🎯 Mahalanobis Distance Test:</b> Md = {row["Mahalanobis Md"]:.3f} —
-        <span style="color:{mah_color}; font-weight:700;">{row["2D-Pc Valid"]}</span><br>
+        <b>Mahalanobis Distance Test:</b> Md = {row["Mahalanobis Md"]:.3f} —
+        <span style="color:{mah_color};">{row["2D-Pc Valid"]}</span><br>
         <small>Md < 1.5 → linear motion assumption breaks down → 3D-Pc required (CARA methodology)</small>
         </div>""",
             unsafe_allow_html=True,
         )
 
         # Fragmentation analysis
-        frag = fragmentation_probability(
-            row["Relative Velocity (km/s)"], mass_a_kg, mass_b_kg
-        )
+        frag = fragmentation_probability(row["Relative Velocity (km/s)"])
         st.markdown("**Collision Consequence Analysis**")
         fc1, fc2, fc3 = st.columns(3)
         with fc1:
@@ -3268,13 +2076,6 @@ with tab2:
         df_det = pd.DataFrame(det.items(), columns=["Parameter", "Value"])
         st.dataframe(df_det, use_container_width=True, hide_index=True)
 
-        st.markdown("---")
-        if st.button("🔭 Show This Pair in Live Simulation", key="tab2_to_sim"):
-            queue_simulation_pair(row["_s1"], row["_s2"], row["_tca_tt"])
-            st.success(
-                "Pair transferred to 'LIVE SIMULATION' tab with TCA-centered timing."
-            )
-
 # ── TAB 3: YOUR SATELLITE ───────────────────────────────────────────────────────
 with tab3:
     st.markdown("## Analyze Your Satellite")
@@ -3302,8 +2103,6 @@ with tab3:
             f"""<div class="info-panel">
         <b>Active satellite:</b> {my_sat.name}&nbsp;&nbsp;|&nbsp;&nbsp;
         <b>Fleet:</b> {st.session_state.get("loaded_group", "—")}&nbsp;&nbsp;|&nbsp;&nbsp;
-        <b>Manual mass A:</b> {mass_a_kg} kg&nbsp;&nbsp;|&nbsp;&nbsp;
-        <b>Fleet mass B:</b> {mass_b_kg} kg&nbsp;&nbsp;|&nbsp;&nbsp;
         <b>Analysis window:</b> {window_hrs} hours&nbsp;&nbsp;|&nbsp;&nbsp;
         <b>σ:</b> {sigma_km} km
         </div>""",
@@ -3312,14 +2111,7 @@ with tab3:
 
         with st.spinner(f"Running conjunction analysis for {my_sat.name}..."):
             df_my = compute_conjunctions_custom(
-                my_sat,
-                sats,
-                window_hrs,
-                sigma_km,
-                hbr_km,
-                mass_a_kg,
-                mass_b_kg,
-                st.session_state.theme,
+                my_sat, sats, window_hrs, sigma_km, mass_a_kg, mass_b_kg
             )
 
         if df_my.empty:
@@ -3428,7 +2220,6 @@ with tab3:
                         window_hrs,
                         row_my["Distance (km)"],
                         sigma_km,
-                        hbr_km,
                     ),
                     use_container_width=True,
                     key="dist_prof_tab3",
@@ -3448,11 +2239,7 @@ with tab3:
             with pc_c[2]:
                 st.metric("Max Pc", f"{row_my['Pc Max']:.3e}")
 
-            theme = st.session_state.theme
-            if row_my["2D-Pc Valid"] != "2D-Pc Valid":
-                mah_c = "#dc3545" if theme == "light" else "#ff2b4d"
-            else:
-                mah_c = "#28a745" if theme == "light" else "#00ff9d"
+            mah_c = "#ff2b4d" if row_my["2D-Pc Valid"] != "2D-Pc Valid" else "#00ff9d"
             st.markdown(
                 f"""<div class="info-panel">
             <b>Mahalanobis Test:</b> Md = {row_my["Mahalanobis Md"]:.3f} —
@@ -3461,9 +2248,7 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-            frag_my = fragmentation_probability(
-                row_my["Relative Velocity (km/s)"], mass_a_kg, mass_b_kg
-            )
+            frag_my = fragmentation_probability(row_my["Relative Velocity (km/s)"])
             fc = st.columns(3)
             with fc[0]:
                 st.metric("Ec (J/g)", f"{frag_my['E_c_J_per_g']:.1f}")
@@ -3475,49 +2260,37 @@ with tab3:
             # Send to simulation button
             st.markdown("---")
             if st.button("🔭 Show This Pair in Live Simulation", key="my_to_sim"):
-                queue_simulation_pair(row_my["_s1"], row_my["_s2"], row_my["_tca_tt"])
-                st.success(
-                    "Pair transferred to 'LIVE SIMULATION' tab with TCA-centered timing."
-                )
+                st.session_state["sim_sat_a"] = row_my["_s1"]
+                st.session_state["sim_sat_b"] = row_my["_s2"]
+                st.success("Pair transferred to 'LIVE SIMULATION' tab.")
 
 
-# --------------------------------------------------------------
-#  TAB 4: LIVE SIMULATION  (PROFESSIONAL YENİDEN TASARIM)
-# --------------------------------------------------------------
+# ── TAB 4: LIVE SIMULATION ──────────────────────────────────────────────────
 with tab4:
     st.markdown("## Live 3D Orbit Simulation")
     st.markdown(
-        """
-        <div class="info-panel">
-            <b>🔬 Professional Conjunction Visualization</b><br>
-            Watch the encounter between two satellites with <b>real‑time</b> animation.
-            Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
-        </div>
-        """,
+        """<div class="info-panel">
+    Watch the encounter between two satellites with <b>real-time</b> animation.
+    Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
+    </div>""",
         unsafe_allow_html=True,
     )
 
-    # ------------------------------------------------------------------
-    #  Session‑state başlatıcıları (eğer daha önce tanımlanmadıysa)
-    # ------------------------------------------------------------------
-    if "run_sim" not in st.session_state:
-        st.session_state.run_sim = False
-    if "sim_sat_a" not in st.session_state:
-        st.session_state.sim_sat_a = None
-    if "sim_sat_b" not in st.session_state:
-        st.session_state.sim_sat_b = None
-    if "sim_center_tt" not in st.session_state:
-        st.session_state.sim_center_tt = None
-    if "window_hrs" not in st.session_state:
-        st.session_state.window_hrs = 24
-    if "sel_a" not in st.session_state:
-        st.session_state.sel_a = None
-    if "sel_b" not in st.session_state:
-        st.session_state.sel_b = None
+    # Satellite selection source
+    if "sim_sat_a" in st.session_state and "sim_sat_b" in st.session_state:
+        default_a = st.session_state["sim_sat_a"].name
+        default_b = st.session_state["sim_sat_b"].name
+        st.markdown(
+            f"""<div class="info-panel">
+        <b>Selected pair:</b> {default_a} × {default_b}<br>
+        <small>Use dropdown menus below to change.</small>
+        </div>""",
+            unsafe_allow_html=True,
+        )
+    else:
+        default_a = sats[0].name if sats else ""
+        default_b = sats[1].name if len(sats) > 1 else ""
 
-    # ------------------------------------------------------------------
-    #  Uydu seçimi (sidebar yerine burada tutarlı bir UI)
-    # ------------------------------------------------------------------
     sat_names = [s.name for s in sats]
     if "my_sat" in st.session_state:
         sat_names_ext = [st.session_state["my_sat"].name] + sat_names
@@ -3526,272 +2299,127 @@ with tab4:
         sat_names_ext = sat_names
         all_sats_ext = sats
 
-    # Önceki seçimleri tutalım (sayfa yenilenince sıfırlanmasın)
-    default_a = st.session_state.get("sel_a")
-    if default_a and default_a in sat_names_ext:
-        # Valid existing selection
-        pass
-    else:
-        default_a = sat_names_ext[0] if sat_names_ext else ""
-
-    default_b = st.session_state.get("sel_b")
-    if default_b and default_b in sat_names_ext:
-        # Valid existing selection
-        pass
-    else:
-        default_b = (
-            sat_names_ext[1]
-            if len(sat_names_ext) > 1
-            else sat_names_ext[0]
-            if sat_names_ext
-            else ""
+    sc1, sc2, sc3 = st.columns([2, 2, 1])
+    with sc1:
+        sel_a = st.selectbox(
+            "Satellite A",
+            sat_names_ext,
+            index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
+            key="sim_a",
         )
+    with sc2:
+        sel_b = st.selectbox(
+            "Satellite B",
+            sat_names_ext,
+            index=sat_names_ext.index(default_b)
+            if default_b in sat_names_ext
+            else min(1, len(sat_names_ext) - 1),
+            key="sim_b",
+        )
+    with sc3:
+        sim_hrs = st.slider("Window (hours)", 1, 12, 6, key="sim_hrs")
 
-    # ------------------------------------------------------------------
-    #  Profesyonel Kontrol Paneli
-    # ------------------------------------------------------------------
-    st.markdown(
-        """
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
-        font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
-        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
-        SIMULATION CONTROLS</div>""",
-        unsafe_allow_html=True,
-    )
+    # Display options
+    st.markdown("**Display Options**")
+    col_opt1, col_opt2 = st.columns(2)
+    with col_opt1:
+        show_orbits = st.checkbox("Show Orbit Trails", value=True, key="show_orbits")
+    with col_opt2:
+        show_tca = st.checkbox("Show TCA Marker", value=True, key="show_tca")
 
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([2, 2, 1])
-        with c1:
-            sel_a = st.selectbox(
-                "Satellite A",
-                sat_names_ext,
-                index=sat_names_ext.index(default_a)
-                if default_a in sat_names_ext
-                else 0,
-                key="live_sel_a",
-            )
-        with c2:
-            sel_b = st.selectbox(
-                "Satellite B",
-                sat_names_ext,
-                index=sat_names_ext.index(default_b)
-                if default_b in sat_names_ext
-                else min(1, len(sat_names_ext) - 1),
-                key="live_sel_b",
-            )
-        with c3:
-            sim_hrs = st.slider(
-                "⏱️ Window (hours)",
-                1,
-                48,
-                min(st.session_state.get("window_hrs", window_hrs), 48),
-                key="live_window_hrs",
-            )
-            if sim_hrs is None:
-                sim_hrs = window_hrs
-            st.session_state.window_hrs = int(sim_hrs)
+    if sel_a == sel_b:
+        st.warning("Select two different satellites.")
+    else:
+        sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
+        sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
 
-        # Görünüm seçenekleri (expander içinde)
-        with st.expander("Advanced Display Options", expanded=False):
-            opt1, opt2 = st.columns(2)
-            with opt1:
-                show_orbits = st.checkbox(
-                    "🔵 Show Orbit Trails",
-                    value=True,
-                    key="live_show_orbits",
-                )
-            with opt2:
-                show_tca = st.checkbox(
-                    "🎯 Show TCA Marker",
-                    value=True,
-                    key="live_show_tca",
-                )
-            # Hız kontrolü (opsiyonel)
-            anim_speed = st.slider(
-                "🎬 Playback Speed",
-                0.5,
-                2.0,
-                1.0,
-                0.1,
-                key="live_anim_speed",
-                help="1.0 = normal speed, 0.5 = two‑times slower, 2.0 = two‑times faster",
-            )
-
-    # ------------------------------------------------------------------
-    #  Profesyonel Başlat / Durdur Butonları
-    # ------------------------------------------------------------------
-    btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
-    with btn_col1:
-        start_disabled = st.session_state.run_sim or (sel_a == sel_b)
-        if st.button(
-            "START SIMULATION",
-            disabled=start_disabled,
-            key="live_start_btn",
-            use_container_width=True,
-        ):
-            if sel_a == sel_b:
-                st.warning("⚠️ Please select two different satellites.")
+        if st.button("▶ START SIMULATION", key="start_sim"):
+            if sim_hrs < 0.5:
+                st.warning("Simulation window must be at least 30 minutes.")
             else:
-                sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
-                sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
-                # Simülasyon kuyruğunu doldur
-                queue_simulation_pair(sat_obj_a, sat_obj_b, None)
-                st.session_state.run_sim = True
-                st.session_state.sel_a = sel_a
-                st.session_state.sel_b = sel_b
-                # Ensure sim_hrs is valid before assignment
-                try:
-                    st.session_state.window_hrs = (
-                        int(sim_hrs) if sim_hrs is not None else 24
-                    )
-                except Exception:
-                    st.session_state.window_hrs = 24
-                st.rerun()  # anlık UI güncellemesi
+                st.session_state["sim_sat_a"] = sat_obj_a
+                st.session_state["sim_sat_b"] = sat_obj_b
+                st.session_state["run_sim"] = True
 
-    with btn_col2:
-        if st.button(
-            "⏹️ STOP SIMULATION",
-            disabled=not st.session_state.run_sim,
-            key="live_stop_btn",
-            use_container_width=True,
+        if (
+            st.session_state.get("run_sim")
+            and "sim_sat_a" in st.session_state
+            and "sim_sat_b" in st.session_state
         ):
-            st.session_state.run_sim = False
-            st.rerun()
-
-    with btn_col3:
-        st.caption(
-            "💡 **Tip:** Use **STOP** to pause the animation, then drag the slider or rotate the view manually."
-        )
-
-    # ------------------------------------------------------------------
-    #  Simülasyon çalışıyorsa animasyonu göster
-    # ------------------------------------------------------------------
-    if st.session_state.get("run_sim", False):
-        # Seçili uydu nesnelerini al (session_state'dan)
-        sa = st.session_state.get("sim_sat_a")
-        sb = st.session_state.get("sim_sat_b")
-
-        # Guard: if satellites are missing despite run_sim=True, reset gracefully
-        if sa is None or sb is None:
-            st.session_state.run_sim = False
-            st.warning("⚠️ Simulation state lost — please press START again.")
-            st.rerun()
-
-        center_tt = st.session_state.get("sim_center_tt")
-        # Ensure window_hrs is valid
-        try:
-            window_hrs = int(st.session_state.get("window_hrs", sim_hrs))
-        except Exception:
-            window_hrs = int(sim_hrs) if sim_hrs is not None else 24
-
-        # Compute frame duration from speed slider BEFORE building the figure
-        frame_duration_ms = max(20, int(60 / anim_speed))  # 60 ms base at 1x speed
-
-        with st.spinner("Preparing animation …"):
-            # Use the main fig_animated_conjunction function which is already cached
-            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = (
-                fig_animated_conjunction(
-                    sa,
-                    sb,
-                    window_hrs=window_hrs,
-                    show_orbits=show_orbits,
-                    show_tca=show_tca,
-                    center_tt=center_tt,
-                    frame_duration=frame_duration_ms,
+            sa = st.session_state["sim_sat_a"]
+            sb = st.session_state["sim_sat_b"]
+            with st.spinner("Calculating orbits and creating animation..."):
+                anim_fig, tca_i, tca_d, dists_arr, jd_arr = fig_animated_conjunction(
+                    sa, sb, sim_hrs, show_orbits, show_tca
                 )
+
+            # TCA info
+            tca_utc = ts.tt_jd(jd_arr[tca_i]).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+            sev_sim, col_sim = risk_level(
+                collision_probability_isotropic(tca_d, sigma_km)
             )
+            tc1, tc2, tc3, tc4 = st.columns(4)
+            with tc1:
+                st.metric("TCA Time (UTC)", tca_utc)
+            with tc2:
+                st.metric("Min. Distance (km)", f"{tca_d:.3f}")
+            with tc3:
+                st.metric("TCA T+ (min)", tca_i * 2)
+            with tc4:
+                st.metric("Risk", sev_sim)
 
-        # --------------------------------------------------------------
-        #  TCA özet metrikleri
-        # --------------------------------------------------------------
-        if ts is not None:
-            tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
-        else:
-            tca_utc = "Unknown (timescale error)"
-        sev_sim, col_sim = risk_level(
-            collision_probability_isotropic(tca_d, sigma_km, hbr_km)
-        )
-        tca_tplus_min = int(round((tca_tt - jd_arr[0]) * 1440))
-
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric("TCA Time (UTC)", tca_utc)
-        with m2:
-            st.metric("Min. Distance (km)", f"{tca_d:.3f}")
-        with m3:
-            st.metric("TCA T+ (min)", tca_tplus_min)
-        with m4:
-            st.metric("Risk", sev_sim)
-
-        # --------------------------------------------------------------
-        #  3D animasyon
-        # --------------------------------------------------------------
-        st.info(
-            "💡 **Camera Control:** Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view manually."
-        )
-        # Plotly’nin `frame.duration` parametresi milisaniye olduğundan:
-        st.plotly_chart(
-            anim_fig,
-            use_container_width=True,
-            key="live_anim_3d",
-            config={"scrollZoom": False, "displayModeBar": False},
-        )
-
-        # --------------------------------------------------------------
-        #  Distance profile (statistik)
-        # --------------------------------------------------------------
-        st.markdown("**📊 Distance Profile (Full Window)**")
-        t_ax = (jd_arr - jd_arr[0]) * 24.0
-        fig_dp_sim = go.Figure()
-        fig_dp_sim.add_hline(
-            y=hbr_km,
-            line=dict(color="#ff2b4d", dash="dot", width=1),
-            annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
-        )
-        fig_dp_sim.add_trace(
-            go.Scatter(
-                x=t_ax,
-                y=dists_arr,
-                mode="lines",
-                line=dict(color="#00c8ff", width=1.5),
-                fill="tozeroy",
-                fillcolor="rgba(0,200,255,.04)",
-                name="Distance (km)",
+            # 3D animation
+            st.info(
+                "ℹ️ Note: Camera rotation is only available when animation is paused. Use STOP or the slider to pause, then rotate the view."
             )
-        )
-        dists_profile = np.asarray(dists_arr, dtype=float)
-        if len(dists_profile) and not np.all(np.isnan(dists_profile)):
-            tca_profile_idx = int(np.nanargmin(dists_profile))
+            st.plotly_chart(anim_fig, use_container_width=True, key="anim_3d_tab4")
+
+            # Distance profile (static)
+            st.markdown("**Distance Profile (Full Window)**")
+            step_m_sim = 2
+            t_ax = np.arange(len(dists_arr)) * step_m_sim / 60.0
+            fig_dp_sim = go.Figure()
+            fig_dp_sim.add_hline(
+                y=0.02,
+                line=dict(color="#ff2b4d", dash="dot", width=1),
+                annotation_text="HBR (20 m)",
+            )
             fig_dp_sim.add_trace(
                 go.Scatter(
-                    x=[t_ax[tca_profile_idx]],
-                    y=[dists_profile[tca_profile_idx]],
+                    x=t_ax,
+                    y=dists_arr,
+                    mode="lines",
+                    line=dict(color="#00c8ff", width=1.5),
+                    fill="tozeroy",
+                    fillcolor="rgba(0,200,255,.04)",
+                    name="Distance (km)",
+                )
+            )
+            fig_dp_sim.add_trace(
+                go.Scatter(
+                    x=[t_ax[tca_i]],
+                    y=[dists_arr[tca_i]],
                     mode="markers+text",
                     marker=dict(color="#ff2b4d", size=10),
-                    text=[f" TCA {dists_profile[tca_profile_idx]:.1f} km"],
+                    text=[f" TCA {dists_arr[tca_i]:.1f} km"],
                     textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
                     name="TCA",
                 )
             )
-        fig_dp_sim.update_layout(
-            **DARK,
-            height=240,
-            xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
-            yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
-            title=dict(
-                text=f"Distance Profile — {sa.name} × {sb.name}",
-                font=dict(size=11, family="Barlow Condensed", color="#00c8ff"),
-                x=0.01,
-            ),
-            margin=dict(l=10, r=10, t=35, b=10),
-            legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
-        )
-        st.plotly_chart(
-            fig_dp_sim,
-            use_container_width=True,
-            key="live_dist_profile",
-            config={"scrollZoom": False, "displayModeBar": False},
-        )
+            fig_dp_sim.update_layout(
+                **DARK,
+                height=240,
+                xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
+                yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
+                title=dict(
+                    text=f"Distance Profile — {sa.name} × {sb.name}",
+                    font=dict(size=11, family="Barlow Condensed", color="#00c8ff"),
+                    x=0.01,
+                ),
+                margin=dict(l=10, r=10, t=35, b=10),
+                legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
+            )
+            st.plotly_chart(fig_dp_sim, use_container_width=True, key="dist_prof_tab4")
 
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
@@ -3837,10 +2465,7 @@ with tab6:
     # Include user-defined satellite in radar and table lists as well
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
-        my_sat_obj = st.session_state["my_sat"]
-        # Eğer my_sat zaten sats içinde varsa ekleme, yoksa başa ekle
-        if not any(s.name == my_sat_obj.name for s in display_sats):
-            display_sats.insert(0, my_sat_obj)
+        display_sats.insert(0, st.session_state["my_sat"])
 
     elems_list = [(sat.name, get_orbital_elements(sat)) for sat in display_sats]
 
@@ -3859,9 +2484,9 @@ with tab6:
                         "Period (min)": elems.get("Orbital Period (min)", "-"),
                     }
                 )
-            if rows:
-                df_elems = pd.DataFrame(rows)
-                st.dataframe(df_elems, use_container_width=True, hide_index=True)
+        if rows:
+            df_elems = pd.DataFrame(rows)
+            st.dataframe(df_elems, use_container_width=True, hide_index=True)
     with col_b:
         st.markdown("**Altitude / Inclination Distribution** (dot size = eccentricity)")
         st.plotly_chart(
@@ -3985,7 +2610,7 @@ with tab7:
     and maneuver rate for space vehicles. <i>NASA Technical Memorandum.</i><br>
     Chan, F.K. (1997). <i>Spacecraft Collision Probability.</i> The Aerospace Press.<br>
     Hoots, F.R. &amp; Roehrich, R.L. (1980). <i>Models for Propagation of NORAD Element Sets.</i>
-    Spacetrack Reporst No. 3.<br>
+    Spacetrack Report No. 3.<br>
     NASA (2023). <i>Spacecraft Conjunction Assessment and Collision Avoidance Best Practices Handbook.</i>
     CARA Handbook Rev. 1.<br>
     NASA (2011). <i>Process for Limiting Orbital Debris.</i> NASA-STD-8719.14A.<br>
