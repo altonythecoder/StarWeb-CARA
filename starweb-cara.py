@@ -3,11 +3,12 @@
 # Altay ÇAVUŞ — Space Sciences and Technologies, ÇOMÜ (2026)
 
 import math
+import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from io import BytesIO
 from itertools import combinations
-from functools import lru_cache
-import time
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -20,8 +21,6 @@ from scipy.stats import norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
-
-
 # ================================================================================
 #  TIMESCALE INIT & SIMULATION QUEUE HELPER
 # ================================================================================
@@ -29,12 +28,18 @@ from spacetrack import SpaceTrackClient
 # (importlardan hemen sonra) global olarak bir kez oluşturuluyordu.
 # Burada module-level'da tutuluyor, tüm modüller buradan import ediyor.
 
+
+@st.cache_resource
+def get_timescale():
+    return load.timescale()
+
+
 try:
-    ts = load.timescale()
+    ts = get_timescale()
 except Exception as e:
-    # Streamlit not yet initialized, just log the error
     print(f"Skyfield timescale initialization failed: {e}")
     ts = None
+
 
 def queue_simulation_pair(sat_a, sat_b, center_tt=None):
     """
@@ -67,13 +72,9 @@ def queue_simulation_pair(sat_a, sat_b, center_tt=None):
 
 
 # ================================================================================
-
-# ================================================================================
-#  TIME AND ORBITAL HELPERS
-# ================================================================================
-# ================================================================================
 #  CONSTANTS AND CONFIGURATION
 # ================================================================================
+
 MANUAL_SAT_DEFAULT_MASS_KG = 250
 MASS_WIDGET_MAX_KG = 500_000.0
 EARTH_RADIUS_KM = 6371.0
@@ -135,13 +136,15 @@ def get_group_default_mass(group_key: str) -> int:
 # ================================================================================
 #  TIME AND ORBITAL HELPERS
 # ================================================================================
-def build_time_grid(start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN):
+def build_time_grid(
+    start_tt: float, window_hrs: int, step_min: int = ANALYSIS_STEP_MIN
+):
     """Build time grid for analysis using linspace for clarity."""
     if ts is None:
         print("Error: Timescale not initialized")
         return None, None
     n_steps = max(1, int(window_hrs * 60 // step_min) + 1)
-    offsets = np.linspace(0, (n_steps-1)*step_min, n_steps) / 1440.0
+    offsets = np.linspace(0, (n_steps - 1) * step_min, n_steps) / 1440.0
     return ts.tt_jd(start_tt + offsets), offsets
 
 
@@ -164,7 +167,7 @@ def _set_mass_widget_values(mass_a: float, mass_b: float):
         mass_a = float(max(1.0, min(mass_a, MASS_WIDGET_MAX_KG)))
         mass_b = float(max(1.0, min(mass_b, MASS_WIDGET_MAX_KG)))
         # Only set session_state if streamlit is initialized
-        if hasattr(st, 'session_state'):
+        if hasattr(st, "session_state"):
             st.session_state["mass_a_kg"] = mass_a
             st.session_state["mass_b_kg"] = mass_b
             # Pop widget-bound keys so they reinitialise from mass_*_kg on the
@@ -178,7 +181,7 @@ def _set_mass_widget_values(mass_a: float, mass_b: float):
 
 def sync_mass_a_from_input():
     try:
-        if not hasattr(st, 'session_state'):
+        if not hasattr(st, "session_state"):
             return  # Streamlit not initialized yet
         value = float(
             max(1.0, min(st.session_state.get("mass_a_input", 1.0), MASS_WIDGET_MAX_KG))
@@ -188,14 +191,14 @@ def sync_mass_a_from_input():
     except Exception as e:
         print(f"Error syncing mass A: {e}")
         # Set fallback values
-        if hasattr(st, 'session_state'):
+        if hasattr(st, "session_state"):
             st.session_state["mass_a_kg"] = 250.0
             st.session_state["mass_a_input"] = 250.0
 
 
 def sync_mass_b_from_input():
     try:
-        if not hasattr(st, 'session_state'):
+        if not hasattr(st, "session_state"):
             return  # Streamlit not initialized yet
         value = float(
             max(1.0, min(st.session_state.get("mass_b_input", 1.0), MASS_WIDGET_MAX_KG))
@@ -205,14 +208,14 @@ def sync_mass_b_from_input():
     except Exception as e:
         print(f"Error syncing mass B: {e}")
         # Set fallback values
-        if hasattr(st, 'session_state'):
+        if hasattr(st, "session_state"):
             st.session_state["mass_b_kg"] = 250.0
             st.session_state["mass_b_input"] = 250.0
 
 
 def sync_mass_defaults(group_key: str):
     try:
-        if not hasattr(st, 'session_state'):
+        if not hasattr(st, "session_state"):
             return  # Streamlit not initialized yet
         manual_present = "my_sat" in st.session_state
         fleet_mass = get_group_default_mass(group_key)
@@ -230,7 +233,7 @@ def sync_mass_defaults(group_key: str):
     except Exception as e:
         print(f"Error syncing mass defaults: {e}")
         # Set fallback values
-        if hasattr(st, 'session_state'):
+        if hasattr(st, "session_state"):
             st.session_state["_mass_group_key"] = group_key
             st.session_state["_manual_mass_mode"] = False
 
@@ -950,18 +953,29 @@ def fetch_spacetrack_tles(username: str, password: str, group_key: str, sat_limi
         if not raw or not raw.strip():
             return None, f"Space-Track üzerinde '{group_key}' için veri bulunamadı."
 
-        lines = [l.strip() for l in raw.strip().split("\n") if l.strip()]
+        raw_lines = raw.strip().split("\n")
+        # Fazla satırları manuel kırp
+        if len(raw_lines) > sat_limit * 2:
+            raw_lines = raw_lines[: sat_limit * 2]
+        lines = [l.strip() for l in raw_lines if l.strip()]
         if len(lines) < 2:
             return None, "Space-Track geçerli TLE döndürmedi."
+        # trim_tle_lines zaten yapıyor ama tekrar çalıştırabilirsin
 
         lines = trim_tle_lines(lines, sat_limit)
         return lines, "Veri Space-Track üzerinden alındı."
     except Exception as e:
         error_msg = str(e)
         if "authentication" in error_msg.lower():
-            return None, "Space-Track kimlik doğrulama hatası. Lütfen kullanıcı adı ve şifrenizi kontrol edin."
+            return (
+                None,
+                "Space-Track kimlik doğrulama hatası. Lütfen kullanıcı adı ve şifrenizi kontrol edin.",
+            )
         elif "timeout" in error_msg.lower():
-            return None, "Space-Track bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin."
+            return (
+                None,
+                "Space-Track bağlantı zaman aşımı. Lütfen daha sonra tekrar deneyin.",
+            )
         elif "rate limit" in error_msg.lower():
             return None, "Space-Track hız sınırı aşıldı. Lütfen kilka dakika bekleyin."
         else:
@@ -979,21 +993,26 @@ def fetch_celestrak_tles(group_key: str, sat_limit: int):
 
         celestrak_group = config["celestrak_group"]
         url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={celestrak_group}&FORMAT=TLE"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (StarWeb-CARA/1.0)"
-        }
-        
+        headers = {"User-Agent": "Mozilla/5.0 (StarWeb-CARA/1.0)"}
+
         # Add retry logic for better reliability
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                resp = requests.get(url, headers=headers, timeout=30)
-                resp.raise_for_status()
-                break
-            except requests.exceptions.RequestException as e:
+                try:
+                    resp = requests.get(url, headers=headers, timeout=30)
+                    resp.raise_for_status()
+                    break
+                except requests.exceptions.RequestException as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    time.sleep(2**attempt)  # Exponential backoff
+                return lines, "Veri Space-Track üzerinden alındı."
+            except Exception as e:
                 if attempt == max_retries - 1:
-                    raise
-                time.sleep(2 ** attempt)  # Exponential backoff
+                    # hata mesajını döndür
+                    return None, f"Space-Track hatası: {str(e)[:100]}"
+                time.sleep(2**attempt)  # üstel bekleme
 
         raw = resp.text
         if not raw or not raw.strip():
@@ -1131,7 +1150,7 @@ def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) ->
     def apsis(sat):
         try:
             # Enhanced error handling for different satellite models
-            if hasattr(sat, 'model') and hasattr(sat.model, 'no_kozai'):
+            if hasattr(sat, "model") and hasattr(sat.model, "no_kozai"):
                 n = sat.model.no_kozai / 60.0  # rad/s
                 a = (GM / n**2) ** (1 / 3)
                 e = sat.model.ecco
@@ -1164,7 +1183,7 @@ def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -
 
     def apsis(sat):
         try:
-            if hasattr(sat, 'model') and hasattr(sat.model, 'no_kozai'):
+            if hasattr(sat, "model") and hasattr(sat.model, "no_kozai"):
                 n = sat.model.no_kozai / 60.0  # rad/s
                 a = (GM / n**2) ** (1 / 3)
                 e = sat.model.ecco
@@ -1174,7 +1193,7 @@ def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -
             else:
                 return 0.0, 10000.0
         except Exception:
-            return 0.0, 10000.0
+            return 0.0, 2000.0  # LEO üst sınırı
 
     q1, Q1 = apsis(sat1)
     q2, Q2 = apsis(sat2)
@@ -1187,7 +1206,9 @@ def apsis_overlap(sat1, sat2, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -
 #  FOSTER 1992 2D-Pc (Section 3.1 — Thesis)
 # ================================================================================
 @st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
-def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020) -> float:
+def foster_2d_pc(
+    miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float = 0.020
+) -> float:
     """
     Foster & Estes (1992) 2D-Pc Model — Section 3.1
     Enhanced with flexible parameter handling for compatibility.
@@ -1198,11 +1219,14 @@ def foster_2d_pc(miss_km: float, sigma_x: float, sigma_y: float, hbr_km: float =
             return 0.0
 
         def integrand(y, x):
-            return (1.0 / (2 * math.pi * sigma_x * sigma_y)) * \
-                   math.exp(-0.5 * (((x - miss_km) / sigma_x) ** 2 + (y / sigma_y) ** 2))
+            return (1.0 / (2 * math.pi * sigma_x * sigma_y)) * math.exp(
+                -0.5 * (((x - miss_km) / sigma_x) ** 2 + (y / sigma_y) ** 2)
+            )
 
         result, _ = dblquad(
-            integrand, -hbr_km, hbr_km,
+            integrand,
+            -hbr_km,
+            hbr_km,
             lambda x: -math.sqrt(max(hbr_km**2 - x**2, 0)),
             lambda x: math.sqrt(max(hbr_km**2 - x**2, 0)),
             limit=50,
@@ -1365,7 +1389,16 @@ def risk_level(pc: float, theme="dark") -> tuple:
 #  HELPER FUNCTION FOR CONJUNCTION METRICS (EXTRACTED TO REDUCE DUPLICATION)
 # ================================================================================
 def _compute_conjunction_metrics(
-    sat1, sat2, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme="dark"
+    sat1,
+    sat2,
+    pos1,
+    pos2,
+    jd_values,
+    sigma_km,
+    hbr_km,
+    mass_a_kg,
+    mass_b_kg,
+    theme="dark",
 ):
     """
     Core function to compute conjunction metrics for a satellite pair.
@@ -1395,7 +1428,9 @@ def _compute_conjunction_metrics(
 
     rel_vel = _relative_velocity(sat1, sat2, best_t)
     pc_iso = collision_probability_isotropic(min_d, sigma_km, hbr_km)
-    pc_foster = foster_2d_pc(min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km)  # Note: sigma_y = 2*sigma_x as in original
+    pc_foster = foster_2d_pc(
+        min_d, sigma_km, sigma_km * 2, hbr_km=hbr_km
+    )  # Note: sigma_y = 2*sigma_x as in original
     pc_max = max_pc_analysis(min_d, hbr_km)
     mah = mahalanobis_test(min_d, sigma_km)
     dil = dilution_check(pc_iso, sigma_km, min_d)
@@ -1444,7 +1479,7 @@ def compute_conjunctions(
     hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
-    theme: str = "dark"
+    theme: str = "dark",
 ) -> tuple:
     """
     Enhanced Apsis filter + 5-min step TCA scan + multiple Pc metrics with progress tracking.
@@ -1464,9 +1499,13 @@ def compute_conjunctions(
     n_total = len(sats) * (len(sats) - 1) // 2
 
     # Progress tracking for large datasets
-    if n_total > 100:
-        progress_bar = st.progress(0, text="Analyzing satellite pairs...")
-    else:
+    try:
+        progress_bar = (
+            st.progress(0, text="Analyzing satellite pairs...")
+            if n_total > 100
+            else None
+        )
+    except Exception:
         progress_bar = None
 
     # Apsis pre-filter (cached)
@@ -1476,17 +1515,24 @@ def compute_conjunctions(
     # Position caching for performance (cached)
     positions_by_id = {}
     for idx, sat in enumerate(sats):
-        if progress_bar and idx % max(1, len(sats)//20) == 0:  # Update less frequently
+        if (
+            progress_bar and idx % max(1, len(sats) // 20) == 0
+        ):  # Update less frequently
             progress = (idx + 1) / len(sats)
-            progress_bar.progress(progress, text=f"Precomputing positions... {idx+1}/{len(sats)}")
+            progress_bar.progress(
+                progress, text=f"Precomputing positions... {idx + 1}/{len(sats)}"
+            )
         positions_by_id[id(sat)] = (sat, propagated_positions(sat, times))
 
     results = []
     for idx, (sat1, sat2) in enumerate(candidate_pairs):
         if progress_bar:
             progress = (idx + 1) / len(candidate_pairs)
-            if idx % max(1, len(candidate_pairs)//20) == 0:  # Update less frequently
-                progress_bar.progress(progress, text=f"Analyzing conjunctions... {idx+1}/{len(candidate_pairs)}")
+            if idx % max(1, len(candidate_pairs) // 20) == 0:  # Update less frequently
+                progress_bar.progress(
+                    progress,
+                    text=f"Analyzing conjunctions... {idx + 1}/{len(candidate_pairs)}",
+                )
 
         # Retrieve precomputed data
         sat1_obj, pos1 = positions_by_id.get(id(sat1), (None, None))
@@ -1497,7 +1543,16 @@ def compute_conjunctions(
 
         # Compute metrics using helper function
         result = _compute_conjunction_metrics(
-            sat1_obj, sat2_obj, pos1, pos2, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme
+            sat1_obj,
+            sat2_obj,
+            pos1,
+            pos2,
+            jd_values,
+            sigma_km,
+            hbr_km,
+            mass_a_kg,
+            mass_b_kg,
+            theme,
         )
         if result:
             results.append(result)
@@ -1517,7 +1572,7 @@ def compute_conjunctions_custom(
     hbr_km: float = 0.020,
     mass_a_kg: float = 250.0,
     mass_b_kg: float = 250.0,
-    theme: str = "dark"
+    theme: str = "dark",
 ) -> pd.DataFrame:
     """
     Compares user's own satellite with existing satellite fleet.
@@ -1557,7 +1612,9 @@ def compute_conjunctions_custom(
     for idx, sat in enumerate(sats):
         q, Q = apsis(sat)
         # Apsis filter
-        if max(my_q, q) > min(my_Q, Q) + 100.0:  # Note: Using 100.0 here as in original (intentional for custom?)
+        if (
+            max(my_q, q) > min(my_Q, Q) + 100.0
+        ):  # Note: Using 100.0 here as in original (intentional for custom?)
             continue
 
         sat_pos = propagated_positions(sat, times)  # Cached
@@ -1566,7 +1623,16 @@ def compute_conjunctions_custom(
 
         # Compute metrics using helper function
         result = _compute_conjunction_metrics(
-            my_sat_obj, sat, my_pos, sat_pos, jd_values, sigma_km, hbr_km, mass_a_kg, mass_b_kg, theme
+            my_sat_obj,
+            sat,
+            my_pos,
+            sat_pos,
+            jd_values,
+            sigma_km,
+            hbr_km,
+            mass_a_kg,
+            mass_b_kg,
+            theme,
         )
         if result:
             results.append(result)
@@ -1613,7 +1679,7 @@ def fig_3d_orbits(sats):
     fig = go.Figure()
 
     # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=360, style="realistic")
+    earth = load_earth_texture(resolution=180, style="realistic")  # veya "night"
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1629,11 +1695,7 @@ def fig_3d_orbits(sats):
                 name="Earth",
                 lightposition=dict(x=0, y=0, z=10000),
                 lighting=dict(
-                    ambient=0.5,
-                    diffuse=0.9,
-                    specular=0.1,
-                    roughness=0.8,
-                    fresnel=0.1
+                    ambient=0.5, diffuse=0.9, specular=0.1, roughness=0.8, fresnel=0.1
                 ),
             )
         )
@@ -1675,10 +1737,10 @@ def fig_3d_orbits(sats):
                     line=dict(color=c, width=3),
                     name=sat.name,
                     opacity=0.9,
-                    hovertemplate=f"<b>{sat.name}</b><br>" +
-                                  "X: %{x:.1f} km<br>" +
-                                  "Y: %{y:.1f} km<br>" +
-                                  "Z: %{z:.1f} km<extra></extra>",
+                    hovertemplate=f"<b>{sat.name}</b><br>"
+                    + "X: %{x:.1f} km<br>"
+                    + "Y: %{y:.1f} km<br>"
+                    + "Z: %{z:.1f} km<extra></extra>",
                 )
             )
 
@@ -1704,11 +1766,11 @@ def fig_3d_orbits(sats):
                     ),
                     name=f"{sat.name} (current)",
                     showlegend=False,
-                    hovertemplate=f"<b>{sat.name}</b><br>" +
-                                  "Current Position<br>" +
-                                  "X: %{x:.1f} km<br>" +
-                                  "Y: %{y:.1f} km<br>" +
-                                  "Z: %{z:.1f} km<extra></extra>",
+                    hovertemplate=f"<b>{sat.name}</b><br>"
+                    + "Current Position<br>"
+                    + "X: %{x:.1f} km<br>"
+                    + "Y: %{y:.1f} km<br>"
+                    + "Z: %{z:.1f} km<extra></extra>",
                 )
             )
 
@@ -1750,7 +1812,7 @@ def fig_ground_tracks(sats):
     offsets = np.linspace(0, 95, 200) / 1440.0
     colors = ENHANCED_COLORS
     fig = go.Figure()
-    
+
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
         try:
@@ -1767,9 +1829,9 @@ def fig_ground_tracks(sats):
                 line=dict(color=c, width=2.5),
                 name=sat.name,
                 opacity=0.9,
-                hovertemplate=f"<b>{sat.name}</b><br>" +
-                              "Lat: %{lat:.2f}°<br>" +
-                              "Lon: %{lon:.2f}°<extra></extra>",
+                hovertemplate=f"<b>{sat.name}</b><br>"
+                + "Lat: %{lat:.2f}°<br>"
+                + "Lon: %{lon:.2f}°<extra></extra>",
             )
         )
         fig.add_trace(
@@ -1788,10 +1850,10 @@ def fig_ground_tracks(sats):
                 textposition="top right",
                 textfont=dict(size=9, family="Space Mono", color=c, weight="bold"),
                 showlegend=False,
-                hovertemplate=f"<b>{sat.name}</b><br>" +
-                              "Current Position<br>" +
-                              "Lat: %{lat:.2f}°<br>" +
-                              "Lon: %{lon:.2f}°<extra></extra>",
+                hovertemplate=f"<b>{sat.name}</b><br>"
+                + "Current Position<br>"
+                + "Lat: %{lat:.2f}°<br>"
+                + "Lon: %{lon:.2f}°<extra></extra>",
             )
         )
     fig.update_layout(
@@ -2021,6 +2083,7 @@ def fig_orbital_elements_radar(elems_list):
 #  LIVE 3D ANIMATION (Two Satellites — TCA Focused)
 # ================================================================================
 
+
 def fig_animated_conjunction(
     sat_a,
     sat_b,
@@ -2056,7 +2119,14 @@ def fig_animated_conjunction(
     step_min = max(2, int(math.ceil(window_hrs * 60 / max_frames)))
     n_frames = min(max(2, int(math.ceil(window_hrs * 60 / step_min)) + 1), max_frames)
     if n_frames < 2:
-        return go.Figure(), 0, 0.0, np.array([0.0]), np.array([sim_start_tt]), sim_start_tt
+        return (
+            go.Figure(),
+            0,
+            0.0,
+            np.array([0.0]),
+            np.array([sim_start_tt]),
+            sim_start_tt,
+        )
 
     orbit_pts = 72
 
@@ -2087,6 +2157,8 @@ def fig_animated_conjunction(
         tca_dist = 0.0
     else:
         tca_idx = int(np.nanargmin(dists))
+        if tca_idx < 0 or tca_idx >= n_frames:
+            tca_idx = 0
         tca_dist = float(dists[tca_idx])
 
     def dist_color(d):
@@ -2141,7 +2213,9 @@ def fig_animated_conjunction(
                 opacity=0.98,
                 hoverinfo="skip",
                 lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(ambient=0.72, diffuse=0.88, specular=0.05, roughness=0.82),
+                lighting=dict(
+                    ambient=0.72, diffuse=0.88, specular=0.05, roughness=0.82
+                ),
                 name="Earth",
             )
         )
@@ -2480,11 +2554,9 @@ def fig_animated_conjunction(
     for tr in make_dynamic_traces(0):
         fig.add_trace(tr)
 
-    n_dynamic = len(fig.data) - n_static
-    if n_dynamic == 0:
-        tca_tt = anim_jd[tca_idx]  # TCA zamanını anim_jd'den al
-        return fig, tca_idx, tca_dist, dists, anim_jd, tca_tt
-
+    n_dynamic = 3  # her zaman 3 dinamik trace (marker A, marker B, mesafe çizgisi)
+    # Eğer fig.data içinde eksik trace varsa, yine de 3 eklenmiş olmalı.
+    # Aşağıda dyn_indices kullanımı:
     dyn_indices = list(range(n_static, n_static + n_dynamic))
 
     frames = []
@@ -2614,7 +2686,9 @@ def fig_animated_conjunction(
                         method="animate",
                         args=[
                             [str(tca_idx)],
-                            dict(frame=dict(duration=0, redraw=False), mode="immediate"),
+                            dict(
+                                frame=dict(duration=0, redraw=False), mode="immediate"
+                            ),
                         ],
                     ),
                 ],
@@ -2653,7 +2727,9 @@ st.set_page_config(
 )
 
 # Apply theme CSS
-st.markdown(get_theme_css(st.session_state.get("theme", "dark")), unsafe_allow_html=True)
+st.markdown(
+    get_theme_css(st.session_state.get("theme", "dark")), unsafe_allow_html=True
+)
 
 st.markdown(
     """
@@ -2674,7 +2750,7 @@ st.markdown(
               color:#5a7a94; margin-top:12px; letter-spacing:.06em; font-weight:400;">
     Space Sciences and Technologies Graduation Project · Space-Track GP Database · Skyfield SGP4 Propagator
   </div>
-  <div style="position:absolute; top:0; right:0; width:100px; height:4px; 
+  <div style="position:absolute; top:0; right:0; width:100px; height:4px;
               background: linear-gradient(90deg, #00d4ff 0%, #00ffa8 100%); border-radius:2px;"></div>
 </div>
 """,
@@ -2719,12 +2795,12 @@ if "theme" not in st.session_state:
 theme_options = {
     "dark": {
         "label": "🌙 Dark Mission Control",
-        "description": "Professional dark theme with cyan accents"
+        "description": "Professional dark theme with cyan accents",
     },
     "light": {
         "label": "☀️ Professional Light",
-        "description": "Clean black & white theme with blue accents"
-    }
+        "description": "Clean black & white theme with blue accents",
+    },
 }
 
 selected_theme = st.sidebar.selectbox(
@@ -2732,7 +2808,7 @@ selected_theme = st.sidebar.selectbox(
     options=list(theme_options.keys()),
     format_func=lambda x: theme_options[x]["label"],
     index=0 if st.session_state.theme == "dark" else 1,
-    key="theme_selector"
+    key="theme_selector",
 )
 
 # Update theme if changed
@@ -2760,7 +2836,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 st.sidebar.markdown(
-    """<div style="font-family:'Inter',sans-serif; font-size:.85rem; 
+    """<div style="font-family:'Inter',sans-serif; font-size:.85rem;
                 color:#c4d4e8; font-weight:600; margin-bottom:8px;">
     Space-Track Authentication
   </div>""",
@@ -2785,7 +2861,9 @@ if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
                 if result:
                     data = result["lines"]
                     st.session_state["tle_data"] = data
-                    st.session_state["loaded_group"] = GROUP_CONFIG[search_term]["label"]
+                    st.session_state["loaded_group"] = GROUP_CONFIG[search_term][
+                        "label"
+                    ]
                     st.session_state["data_source"] = result["source"]
                     st.session_state["data_message"] = result["message"]
                     count = count_tle_objects(data)
@@ -2799,14 +2877,16 @@ if st.sidebar.button("DOWNLOAD LIVE TLE DATA"):
                     st.sidebar.info(f"📊 Source: {result['source']}")
                     st.sidebar.caption(result["message"])
                 else:
-                    st.sidebar.error("❌ Failed to download TLE data. Please try again.")
+                    st.sidebar.error(
+                        "❌ Failed to download TLE data. Please try again."
+                    )
             except Exception as e:
                 st.sidebar.error(f"❌ Download error: {str(e)[:100]}")
     else:
         st.sidebar.warning("⚠️ Authentication required. Please enter your credentials.")
 
 st.sidebar.markdown(
-    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%); 
+    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
                 margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
@@ -2823,7 +2903,7 @@ st.sidebar.markdown(
     unsafe_allow_html=True,
 )
 st.sidebar.markdown(
-    """<div style="font-family:'Inter',sans-serif; font-size:.75rem; 
+    """<div style="font-family:'Inter',sans-serif; font-size:.75rem;
                 color:#5a7a94; margin-bottom:10px; font-style:italic;">
     3-line TLE format (name + line1 + line2)
   </div>""",
@@ -2870,7 +2950,7 @@ if "my_sat" in st.session_state:
         st.rerun()
 
 st.sidebar.markdown(
-    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%); 
+    """<div style="height:1px; background:linear-gradient(90deg, transparent 0%, #1e2d42 50%, transparent 100%);
                 margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
@@ -2906,7 +2986,9 @@ else:
         unsafe_allow_html=True,
     )
 
-window_hrs = st.sidebar.slider("Analysis window (hours)", 1, 48, 24, key="sidebar_window_hrs")
+window_hrs = st.sidebar.slider(
+    "Analysis window (hours)", 1, 48, 24, key="sidebar_window_hrs"
+)
 sigma_km = st.sidebar.select_slider(
     "Position uncertainty σ (km)",
     options=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0],
@@ -2978,7 +3060,9 @@ st.sidebar.markdown("""
 
 # DATA CHECK
 if "tle_data" not in st.session_state:
-    st.info("📡 Download data by entering your Space-Track credentials in the left panel.")
+    st.info(
+        "📡 Download data by entering your Space-Track credentials in the left panel."
+    )
     st.markdown(
         """
     <div class="info-panel">
@@ -3025,14 +3109,20 @@ with tab1:
     with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
         start_time = time.time()
         df, n_filtered, n_total = compute_conjunctions(
-            sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
+            sats,
+            window_hrs,
+            sigma_km,
+            hbr_km,
+            mass_a_kg,
+            mass_b_kg,
+            st.session_state.theme,
         )
         computation_time = time.time() - start_time
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     st.markdown(
         f"""<div style="font-family:'Space Mono',monospace; font-size:.7rem;
-         color:#5a7a94; text-align:right; margin-bottom:16px; padding:8px 12px; 
+         color:#5a7a94; text-align:right; margin-bottom:16px; padding:8px 12px;
          background:rgba(90,122,148,.05); border-radius:6px; border:1px solid rgba(90,122,148,.15);">
          Last update: {now_str} · Computation time: {computation_time:.2f}s</div>""",
         unsafe_allow_html=True,
@@ -3301,7 +3391,14 @@ with tab3:
 
         with st.spinner(f"Running conjunction analysis for {my_sat.name}..."):
             df_my = compute_conjunctions_custom(
-                my_sat, sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
+                my_sat,
+                sats,
+                window_hrs,
+                sigma_km,
+                hbr_km,
+                mass_a_kg,
+                mass_b_kg,
+                st.session_state.theme,
             )
 
         if df_my.empty:
@@ -3521,7 +3618,13 @@ with tab4:
         # Valid existing selection
         pass
     else:
-        default_b = sat_names_ext[1] if len(sat_names_ext) > 1 else sat_names_ext[0] if sat_names_ext else ""
+        default_b = (
+            sat_names_ext[1]
+            if len(sat_names_ext) > 1
+            else sat_names_ext[0]
+            if sat_names_ext
+            else ""
+        )
 
     # ------------------------------------------------------------------
     #  Profesyonel Kontrol Paneli
@@ -3544,7 +3647,9 @@ with tab4:
             sel_a = st.selectbox(
                 "🛰️ Satellite A",
                 sat_names_ext,
-                index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
+                index=sat_names_ext.index(default_a)
+                if default_a in sat_names_ext
+                else 0,
                 key="live_sel_a",
             )
         with c2:
@@ -3564,9 +3669,9 @@ with tab4:
                 min(st.session_state.get("window_hrs", window_hrs), 48),
                 key="live_window_hrs",
             )
-            # Ensure sim_hrs is a valid integer
             if sim_hrs is None:
                 sim_hrs = window_hrs
+            st.session_state.window_hrs = int(sim_hrs)
 
         # Görünüm seçenekleri (expander içinde)
         with st.expander("⚙️ Advanced Display Options", expanded=False):
@@ -3618,7 +3723,9 @@ with tab4:
                 st.session_state.sel_b = sel_b
                 # Ensure sim_hrs is valid before assignment
                 try:
-                    st.session_state.window_hrs = int(sim_hrs) if sim_hrs is not None else 24
+                    st.session_state.window_hrs = (
+                        int(sim_hrs) if sim_hrs is not None else 24
+                    )
                 except Exception:
                     st.session_state.window_hrs = 24
                 st.rerun()  # anlık UI güncellemesi
@@ -3664,14 +3771,16 @@ with tab4:
 
         with st.spinner("Preparing animation …"):
             # Use the main fig_animated_conjunction function which is already cached
-            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = fig_animated_conjunction(
-                sa,
-                sb,
-                window_hrs=window_hrs,
-                show_orbits=show_orbits,
-                show_tca=show_tca,
-                center_tt=center_tt,
-                frame_duration=frame_duration_ms,
+            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = (
+                fig_animated_conjunction(
+                    sa,
+                    sb,
+                    window_hrs=window_hrs,
+                    show_orbits=show_orbits,
+                    show_tca=show_tca,
+                    center_tt=center_tt,
+                    frame_duration=frame_duration_ms,
+                )
             )
 
         # --------------------------------------------------------------
