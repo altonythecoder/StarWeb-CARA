@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from io import BytesIO
 from itertools import combinations
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -1120,6 +1119,7 @@ def get_orbital_elements(sat: EarthSatellite) -> dict:
 # ================================================================================
 #  APSIS FILTER (Section 2.1 — Thesis)
 # ================================================================================
+
 def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) -> list:
     """
     Apsis (Apogee-Perigee) Filter — Section 2.1
@@ -1143,9 +1143,9 @@ def apsis_filter(sats: list, threshold_km: float = APSIS_FILTER_THRESHOLD_KM) ->
                 return per, apo
             else:
                 # Fallback for satellites without model attributes
-                return 0.0, 10000.0
-                except Exception:
-                    return 0.0, 2000.0   # 2000 km üzeri LEO sayılmaz, filtre dışı kalır
+                return 0.0, 2000.0
+        except Exception:
+            return 0.0, 2000.0  # 2000 km üzeri LEO sayılmaz, filtre dışı kalır
 
     passed = []
     for s1, s2 in combinations(sats, 2):
