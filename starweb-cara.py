@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from io import BytesIO
 from itertools import combinations
-
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
