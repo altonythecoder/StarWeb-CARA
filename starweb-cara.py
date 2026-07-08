@@ -20,6 +20,10 @@ from scipy.stats import norm
 from skyfield.api import EarthSatellite, load, wgs84
 from spacetrack import SpaceTrackClient
 
+try:
+    progress_bar = st.progress(0, text="Analyzing satellite pairs...")
+except Exception:
+    progress_bar = None
 
 # ================================================================================
 #  TIMESCALE INIT & SIMULATION QUEUE HELPER
