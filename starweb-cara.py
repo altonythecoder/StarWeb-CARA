@@ -1679,7 +1679,7 @@ def fig_3d_orbits(sats):
     fig = go.Figure()
 
     # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=180, style="realistic")  # veya "night"
+    earth = load_earth_texture(resolution=180, style="night")  # night daha hafif
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -1715,7 +1715,7 @@ def fig_3d_orbits(sats):
 
     # Use enhanced color palette
     colors = ENHANCED_COLORS
-    offsets = np.linspace(0, 95, 80) / 1440.0
+    offsets = np.linspace(0, 95, 40) / 1440.0
 
     for k, sat in enumerate(sats):
         times = ts.tt_jd(now.tt + offsets)
@@ -1783,7 +1783,7 @@ def fig_3d_orbits(sats):
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
             zaxis=dict(visible=False, showgrid=False, zeroline=False),
             aspectmode="cube",
-            camera=dict(eye=dict(x=1.8, y=1.8, z=0.8), up=dict(x=0, y=0, z=1)),
+            camera=dict(eye=dict(x=2.2, y=2.2, z=1.2), up=dict(x=0, y=0, z=1)),
         ),
         legend=dict(
             font=dict(size=9, family="Space Mono", color="#c4d4e8"),
@@ -2733,42 +2733,32 @@ st.markdown(
 
 st.markdown(
     """
-<div style="padding:24px 0 12px 0; border-bottom:2px solid #1e2d42; margin-bottom:24px; position:relative;">
-  <div style="font-family:'Space Mono',monospace; font-size:.7rem;
-              color:#5a7a94; letter-spacing:.25em; text-transform:uppercase; margin-bottom:8px;
-              background: linear-gradient(90deg, #00d4ff 0%, #00ffa8 100%);
-              -webkit-background-clip: text;
-              -webkit-text-fill-color: transparent;
-              background-clip: text;">
-    Conjunction Assessment and Collision Risk Analysis
-  </div>
-  <h1 style="margin:0; font-size:2rem; line-height:1.3;">
-    Low Earth Orbit<br>
-    <span style="color:#00d4ff;">Conjunction Assessment &amp; Collision Risk Analysis</span>
+<div style="padding:16px 0 8px 0; border-bottom:2px solid #1e2d42; margin-bottom:24px;">
+  <h1 style="margin:0; font-size:1.8rem; line-height:1.3; font-family:'Barlow Condensed',sans-serif; font-weight:700; color:#fff;">
+    StarWeb-CARA
   </h1>
-  <div style="font-family:'Inter',sans-serif; font-size:.9rem;
-              color:#5a7a94; margin-top:12px; letter-spacing:.06em; font-weight:400;">
-    Space Sciences and Technologies Graduation Project · Space-Track GP Database · Skyfield SGP4 Propagator
+  <div style="font-family:'Inter',sans-serif; font-size:.85rem;
+              color:#5a7a94; margin-top:4px; letter-spacing:.04em; font-weight:400;">
+    Conjunction Assessment and Collision Risk Analysis for LEO Megaconstellations
   </div>
-  <div style="position:absolute; top:0; right:0; width:100px; height:4px;
-              background: linear-gradient(90deg, #00d4ff 0%, #00ffa8 100%); border-radius:2px;"></div>
+  <div style="font-family:'Space Mono',monospace; font-size:.65rem;
+              color:#3a5a74; margin-top:2px; letter-spacing:.02em;">
+    Space Sciences and Technologies · Altay ÇAVUŞ 2026 · Skyfield SGP4 · Space-Track GP
+  </div>
 </div>
 """,
     unsafe_allow_html=True,
 )
 
 # ── SIDEBAR ─────────────────────────────────────────────────────────────────
+
 st.sidebar.markdown(
     """
-<div style="padding:16px 0 20px 0; border-bottom:2px solid #1e2d42; margin-bottom:20px;">
-  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.4rem;
-              font-weight:700; color:#00d4ff; letter-spacing:.08em; text-transform:uppercase;
-              margin-bottom:4px;">
+<div style="padding:16px 0 12px 0; border-bottom:2px solid #1e2d42; margin-bottom:20px;">
+  <div style="font-family:'Barlow Condensed',sans-serif; font-size:1.2rem;
+              font-weight:700; color:#00d4ff; letter-spacing:.06em; text-transform:uppercase;
+              margin-bottom:2px;">
     CONTROL PANEL
-  </div>
-  <div style="font-family:'Space Mono',monospace; font-size:.65rem;
-              color:#5a7a94; letter-spacing:.15em; text-transform:uppercase;">
-    System Configuration
   </div>
 </div>
 """,
@@ -2777,12 +2767,9 @@ st.sidebar.markdown(
 
 # ─── THEME SELECTOR ─────────────────────────────────────────────────────────
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
-    letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">00</span>
+    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
+    font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     THEME SELECTION</div>""",
     unsafe_allow_html=True,
 )
@@ -2825,16 +2812,15 @@ st.sidebar.markdown(
 )
 
 # ─── SECTION 1: AUTO TLE DOWNLOAD ─────────────────────────────────────────
+
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
-    letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">01</span>
+    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
+    font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     AUTO TLE DOWNLOAD</div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
     """<div style="font-family:'Inter',sans-serif; font-size:.85rem;
                 color:#c4d4e8; font-weight:600; margin-bottom:8px;">
@@ -2892,16 +2878,15 @@ st.sidebar.markdown(
 )
 
 # ─── SECTION 2: MANUAL TLE ENTRY ─────────────────────────────────────────────
+
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
-    letter-spacing:.18em;color:#00ffa8;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00ffa8 0%, #00d4ff 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">02</span>
-    ENTER YOUR SATELLITE (TLE)</div>""",
+    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
+    font-weight:600; letter-spacing:.06em; color:#00ffa8; text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
+    MANUAL TLE ENTRY</div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
     """<div style="font-family:'Inter',sans-serif; font-size:.75rem;
                 color:#5a7a94; margin-bottom:10px; font-style:italic;">
@@ -2954,16 +2939,15 @@ st.sidebar.markdown(
                 margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
-    """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
-    letter-spacing:.18em;color:#5a7a94;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #5a7a94 0%, #1e2d42 100%);
-                 color:#c4d4e8; padding:2px 8px; border-radius:4px; font-weight:700;">03</span>
+    """<div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
+    font-weight:600; letter-spacing:.06em; color:#5a7a94; text-transform:uppercase;
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     ANALYSIS PARAMETERS</div>""",
     unsafe_allow_html=True,
 )
+
 sync_mass_defaults(search_term)
 selected_group_label = GROUP_CONFIG[search_term]["label"]
 selected_group_mass = get_group_default_mass(search_term)
@@ -3564,7 +3548,7 @@ with tab3:
 #  TAB 4: LIVE SIMULATION  (PROFESSIONAL YENİDEN TASARIM)
 # --------------------------------------------------------------
 with tab4:
-    st.markdown("## 🚀 Live 3D Orbit Simulation")
+    st.markdown("## Live 3D Orbit Simulation")
     st.markdown(
         """
         <div class="info-panel">
@@ -3631,12 +3615,9 @@ with tab4:
     # ------------------------------------------------------------------
     st.markdown(
         """
-        <div style="font-family:'Space Mono',monospace;font-size:.7rem;
-        letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-        display:flex; align-items:center; gap:8px;">
-        <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                     color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">🎮</span>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:.9rem;
+        font-weight:600; letter-spacing:.06em; color:#00d4ff; text-transform:uppercase;
+        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
         SIMULATION CONTROLS</div>""",
         unsafe_allow_html=True,
     )
@@ -3645,7 +3626,7 @@ with tab4:
         c1, c2, c3 = st.columns([2, 2, 1])
         with c1:
             sel_a = st.selectbox(
-                "🛰️ Satellite A",
+                "Satellite A",
                 sat_names_ext,
                 index=sat_names_ext.index(default_a)
                 if default_a in sat_names_ext
@@ -3654,7 +3635,7 @@ with tab4:
             )
         with c2:
             sel_b = st.selectbox(
-                "🛰️ Satellite B",
+                "Satellite B",
                 sat_names_ext,
                 index=sat_names_ext.index(default_b)
                 if default_b in sat_names_ext
@@ -3674,7 +3655,7 @@ with tab4:
             st.session_state.window_hrs = int(sim_hrs)
 
         # Görünüm seçenekleri (expander içinde)
-        with st.expander("⚙️ Advanced Display Options", expanded=False):
+        with st.expander("Advanced Display Options", expanded=False):
             opt1, opt2 = st.columns(2)
             with opt1:
                 show_orbits = st.checkbox(
@@ -3706,7 +3687,7 @@ with tab4:
     with btn_col1:
         start_disabled = st.session_state.run_sim or (sel_a == sel_b)
         if st.button(
-            "🚀 START SIMULATION",
+            "START SIMULATION",
             disabled=start_disabled,
             key="live_start_btn",
             use_container_width=True,
@@ -3919,7 +3900,10 @@ with tab6:
     # Include user-defined satellite in radar and table lists as well
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
-        display_sats.insert(0, st.session_state["my_sat"])
+        my_sat_obj = st.session_state["my_sat"]
+        # Eğer my_sat zaten sats içinde varsa ekleme, yoksa başa ekle
+        if not any(s.name == my_sat_obj.name for s in display_sats):
+            display_sats.insert(0, my_sat_obj)
 
     elems_list = [(sat.name, get_orbital_elements(sat)) for sat in display_sats]
 
