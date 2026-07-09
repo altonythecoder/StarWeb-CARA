@@ -90,37 +90,6 @@ Not only collision probability, but also the magnitude of potential disaster sho
 - Ec ≥ 10 J/g → Severe damage and significant debris cloud
 - Ec ≥ 1 J/g → Partial damage
 
-## 🛠️ Installation
-
-### Prerequisites
-- Python 3.8 or higher
-- Space-Track account (free registration at space-track.org)
-
-### Setup
-
-1. Clone the repository:
-```bash
-git clone https://github.com/altonythecoder/StarWeb-CARA
-cd StarWeb-CARA
-```
-
-2. Create a virtual environment (recommended):
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install required dependencies:
-```bash
-pip install streamlit pandas numpy plotly skyfield spacetrack scipy pillow requests
-```
-
-4. Run the application:
-```bash
-streamlit run starweb-cara.py
-```
-
-The application will open in your default web browser at `http://localhost:8501`.
 
 ## 📖 Usage
 
