@@ -2700,10 +2700,7 @@ st.sidebar.markdown(
 st.sidebar.markdown(
     """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
     letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">00</span>
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     THEME SELECTION</div>""",
     unsafe_allow_html=True,
 )
@@ -2746,16 +2743,15 @@ st.sidebar.markdown(
 )
 
 # ─── SECTION 1: AUTO TLE DOWNLOAD ─────────────────────────────────────────
+
 st.sidebar.markdown(
     """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
     letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">01</span>
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     AUTO TLE DOWNLOAD</div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
     """<div style="font-family:'Inter',sans-serif; font-size:.85rem; 
                 color:#c4d4e8; font-weight:600; margin-bottom:8px;">
@@ -2812,13 +2808,11 @@ st.sidebar.markdown(
 st.sidebar.markdown(
     """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
     letter-spacing:.18em;color:#00ffa8;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #00ffa8 0%, #00d4ff 100%);
-                 color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">02</span>
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     ENTER YOUR SATELLITE (TLE)</div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
     """<div style="font-family:'Inter',sans-serif; font-size:.75rem; 
                 color:#5a7a94; margin-bottom:10px; font-style:italic;">
@@ -2871,16 +2865,15 @@ st.sidebar.markdown(
                 margin:20px 0;"></div>""",
     unsafe_allow_html=True,
 )
+
 st.sidebar.markdown(
     """<div style="font-family:'Space Mono',monospace;font-size:.7rem;
     letter-spacing:.18em;color:#5a7a94;text-transform:uppercase;
-    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-    display:flex; align-items:center; gap:8px;">
-    <span style="background:linear-gradient(135deg, #5a7a94 0%, #1e2d42 100%);
-                 color:#c4d4e8; padding:2px 8px; border-radius:4px; font-weight:700;">03</span>
+    border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
     ANALYSIS PARAMETERS</div>""",
     unsafe_allow_html=True,
 )
+
 sync_mass_defaults(search_term)
 selected_group_label = GROUP_CONFIG[search_term]["label"]
 selected_group_mass = get_group_default_mass(search_term)
