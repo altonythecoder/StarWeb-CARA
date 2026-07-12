@@ -1,3 +1,12 @@
+# 🌌 StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
+
+![StarWeb-CARA Interface](https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg)
+> *A comprehensive Streamlit-based web application for analyzing conjunction events and collision risks in Low Earth Orbit (LEO).*
+
+This system implements industry-standard algorithms for satellite collision probability assessment, including multiple Pc models, fragmentation analysis, and real-time cinematic 3D visualizations.
+
+---
+
 ## 🎓 Academic Context & Credits
 
 ### Why This Project Was Developed
@@ -6,180 +15,66 @@ This system was developed as a **Graduation Project** for the **Space Sciences a
 The primary objective of this project is to implement, evaluate, and visualize industry-standard conjunction assessment risk analysis (CARA) methodologies specifically focusing on the operational collision risks posed by modern megaconstellations such as Starlink and OneWeb.
 
 ### 👥 Project Team
-
 * **Author:** **ALTAY ÇAVUŞ**
     * **Role:** Lead Developer & Researcher 
     * **Department:** Space Sciences and Technologies
-    * **Contact:** *altaycavuss@gmail.com* 
-
-* **Academic Advisor:** **Assoc. Prof. BURCU ÖZKARDEŞ**
+    * **Contact:** *altaycavuss@gmail.com* * **Academic Advisor:** **Assoc. Prof. BURCU ÖZKARDEŞ**
     * **Role:** Project Supervisor / Consultant 
     * **Affiliation:** Department of Space Sciences and Technologies
 
-# StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis for Starlink and OneWeb Megaconstellations
+---
 
-A comprehensive Streamlit-based web application for analyzing conjunction events and collision risks in Low Earth Orbit (LEO). This system implements industry-standard algorithms for satellite collision probability assessment, including multiple Pc models, fragmentation analysis, and real-time 3D visualization.
+## 🚀 Key Features & Innovations
 
-## 🚀 Features
+### 1. Core Analysis Capabilities
+- **Live TLE Integration**: Connects directly with the *Space-Track GP* database and *CelesTrak* (fallback) for real-time orbital data.
+- **Megaconstellation Support**: Instantly loads fleets like STARLINK, ONEWEB, ISS, KUIPER, IRIDIUM-NEXT, and PLANET.
+- **Custom Satellite Entry**: Inject your own 3-line TLE data to test your custom satellite against existing space infrastructure.
+- **Apsis Filter (ESA/NASA Standard)**: Dramatically reduces O(N²) computational load by pre-filtering satellite pairs with non-overlapping altitude bands.
 
-### Core Analysis Capabilities
-- **Live TLE Data Download**: Direct integration with Space-Track GP database for real-time satellite orbital data
-- **Multiple Constellation Support**: Pre-configured support for STARLINK, ISS, and ONEWEB constellations
-- **Custom Satellite Analysis**: Enter your own TLE data to analyze conjunction risks with existing satellite fleets
-- **Apsis Filter**: ESA/NASA standard pre-filtering algorithm that dramatically reduces O(N²) computational load by eliminating satellite pairs with non-overlapping altitude bands
+### 2. Advanced Collision Probability (Pc) Models
+- **Chan (1997) Isotropic Model**: Fast closed-form approximation assuming spherical position uncertainty.
+- **Foster & Estes (1992) 2D-Pc**: The ultimate industry standard. Projects uncertainties onto a 2D encounter plane and integrates the combined Gaussian probability density over the Hard-Body Radius (HBR).
+- **Max-Pc Analysis**: Iterative covariance variation to find the mathematical maximum collision probability for a given geometry.
+- **Mahalanobis Distance Test**: Evaluates the validity of 2D-Pc assumptions (Md < 1.5 → 3D-Pc required).
 
-### Collision Probability Models
-- **Chan (1997) Isotropic Model**: Fast closed-form approximation assuming spherical position uncertainty distribution
-- **Foster & Estes (1992) 2D-Pc**: Industry standard model used since NASA Space Shuttle era, projecting collision integration onto the encounter plane
-- **Max-Pc Analysis**: Iterative covariance variation to find mathematical maximum collision probability for given geometry
-- **Mahalanobis Distance Test**: CARA methodology validity test for 2D-Pc assumptions (Md < 1.5 → 3D-Pc required)
+### 3. Risk Assessment & Physics
+- **NASA STD-8719.14 Risk Classification**: Four-tier risk classification (CRITICAL, HIGH, MEDIUM, LOW).
+- **Probability Dilution Detection**: Alerts users to "false confidence" scenarios where wide position uncertainty mathematically drops the Pc.
+- **Fragmentation Probability (Pf)**: Calculates Specific Kinetic Energy ($E_c = \frac{1}{2} m_b v_{rel}^2 / m_a$) to determine if a collision would cause Catastrophic Fragmentation (Kessler Syndrome).
 
-### Risk Assessment
-- **NASA STD-8719.14 Risk Classification**: Four-tier risk classification system (CRITICAL, HIGH, MEDIUM, LOW)
-- **Probability Dilution Detection**: Identifies false confidence scenarios where wide covariance masks true collision risk
-- **Fragmentation Probability Analysis**: Kinetic energy-based fragmentation risk assessment per NASA operational guidelines
-- **Specific Kinetic Energy Calculation**: Ec = ½ · m_b · v_rel² / m_a (J/g) with configurable satellite masses (10-5000 kg)
-
-### Visualization
-- **3D Orbit Visualization**: Interactive 3D Plotly visualization of satellite orbits with Earth texture
-- **Ground Track Maps**: Real-time ground track visualization with 95-minute orbital paths
-- **Live 3D Animation**: Real-time animation of satellite encounters with Play/Stop/Speed controls and Jump to TCA functionality
-- **Distance Profile Plots**: Time-series distance profiles showing TCA (Time of Closest Approach)
-- **Risk Gauge Visualizations**: Interactive gauge displays for collision probability levels
-- **Orbital Elements Radar**: Altitude/Inclination distribution visualization with eccentricity-based sizing
-
-### User Interface
-- **Mission Control Dark Theme**: Professional dark-themed UI with Space Mono and Barlow Condensed fonts
-- **Seven Interactive Tabs**: Dashboard, Conjunction Analysis, Your Satellite, Live Simulation, 3D Orbit & Ground Track, Orbital Elements, Methodology
-- **CSV Export**: Download conjunction analysis reports as CSV files
-- **Responsive Design**: Wide layout optimized for desktop viewing
-
-## 📋 Methodology
-
-### 1. Orbit Propagation — SGP4/SDP4 (Skyfield)
-The NORAD standard Simplified General Perturbations-4 (SGP4) model converts TLE (Two-Line Element) data into position vectors. SGP4 approximately accounts for gravity harmonics, atmospheric drag, and Sun/Moon third-body effects with a centered force model. SGP4 is used for low-orbit (<2000 km) objects; SDP4 automatically engages for high-orbit objects.
-
-### 2. Apsis Filter — Section 2.1 (ESA/NASA Standard)
-Before analysis begins, all satellite pairs pass through the Apsis (Apogee-Perigee) Filter. If the first object's perigee altitude q₁ is higher than the second object's apogee altitude Q₂, these two orbits can never intersect in space. Mathematical condition: `max(q₁, q₂) > min(Q₁, Q₂) + D_th`. This filter dramatically reduces O(N²) computational load.
-
-### 3. TCA Detection — 5-Minute Step Coarse Scan
-For pairs passing the apsis filter, Euclidean distance is calculated throughout the analysis window with 5-minute fixed time steps. The moment of minimum distance is identified as TCA (Time of Closest Approach). Local minimization with Brent's method can be applied for more precise TCA.
-
-### 4. Collision Probability — Two Models
-- **Chan (1997) Isotropic Model**: Simplified model assuming position uncertainty is equally (spherically) distributed in all directions. Formula: normal CDF-based closed-form approximation.
-- **Foster & Estes (1992) 2D-Pc**: Industry standard used since NASA Space Shuttle era. Collision integration is reduced to two dimensions by projecting onto the encounter plane. Combined covariance matrix (Σ = Cₐ + C_b) is created and the 2D integral of Gaussian distribution over HBR circle is calculated.
-
-### 5. Mahalanobis Distance Test — Section 3.2 (CARA Methodology)
-2D-Pc's "short-duration encounter" and "linear motion" assumptions break down when objects approach at low relative velocities. According to CARA methodology, Mahalanobis distance (Md = miss / σ) tests this validity:
-- Md < 0.5 → 2D-Pc INVALID — 3D-Pc / Monte Carlo required
-- Md < 1.5 → 2D-Pc BORDERLINE — 3D-Pc recommended
-- Md ≥ 1.5 → 2D-Pc VALID
-
-### 6. Probability Dilution — Section 4
-With large position uncertainty (wide covariance), the Gaussian distribution spreads so much in space that the density falling within the HBR circle approaches zero — Pc mathematically decreases. This "false confidence" problem can make a genuinely dangerous close approach appear safe. Solution tools: WSPRT (Wald Sequential Probability Ratio Test) and Max-Pc Analysis.
-
-### 7. Risk Classification — NASA STD-8719.14
-- Pc > 1×10⁻³ → CRITICAL — Collision Avoidance Maneuver (CAM) mandatory
-- Pc > 1×10⁻⁴ → HIGH — CAM evaluation required
-- Pc > 1×10⁻⁵ → MEDIUM — Increased tracking frequency
-- Pc ≤ 1×10⁻⁵ → LOW — Routine tracking sufficient
-
-### 8. Collision Consequence — Fragmentation Probability Pf
-Not only collision probability, but also the magnitude of potential disaster should be included in risk calculation. Specific Kinetic Energy: Ec = ½ · m_b · v_rel² / m_a (J/g)
-- Ec ≥ 40 J/g → Catastrophic fragmentation — Kessler Syndrome contribution
-- Ec ≥ 10 J/g → Severe damage and significant debris cloud
-- Ec ≥ 1 J/g → Partial damage
-
-
-## 📖 Usage
-
-### Getting Started
-
-1. **Space-Track Authentication**: Enter your Space-Track email and password in the left sidebar control panel
-2. **Select Constellation**: Choose between STARLINK, ISS, or ONEWEB constellations
-3. **Download Data**: Click "DOWNLOAD LIVE TLE DATA" to fetch current orbital data
-4. **Configure Parameters**: Adjust analysis parameters in the sidebar:
-   - Analysis window (hours): 1-48 hours (default: 24)
-   - Position uncertainty σ (km): 0.05-5.0 km (default: 0.5)
-   - Maximum satellite count: 5-30 satellites (default: 15)
-   - Hard-Body Radius HBR (km): 0.005-0.100 km (default: 0.020)
-   - Object A Mass (kg): 10-5000 kg (default: 250)
-   - Object B Mass (kg): 10-5000 kg (default: 250)
-
-### Using the Tabs
-
-**Dashboard**: Overview of conjunction events with risk metrics, apsis filter statistics, and downloadable CSV reports
-
-**Conjunction Analysis**: Detailed review of individual conjunction events with distance profiles, collision probability model comparisons, Mahalanobis test results, and fragmentation analysis
-
-**Your Satellite**: Analyze your own satellite's collision risk with existing fleets. Enter your TLE data in the sidebar under "2 — ENTER YOUR SATELLITE (TLE)"
-
-**Live Simulation**: Watch real-time 3D animation of satellite encounters with Play/Stop/Speed controls and Jump to TCA functionality
-
-**3D Orbit & Ground Track**: Visualize satellite orbits in 3D space and ground track maps
-
-**Orbital Elements**: View Kepler orbital elements table and altitude/inclination distribution
-
-**Methodology**: Detailed theoretical background and algorithm explanations
-
-### Custom Satellite Analysis
-
-To analyze your own satellite:
-
-1. Navigate to the sidebar section "2 — ENTER YOUR SATELLITE (TLE)"
-2. Enter your TLE data in the text area (3-line format: name + line1 + line2)
-3. Click "LOAD MANUAL TLE"
-4. Go to the "YOUR SATELLITE" tab to view conjunction analysis results
-
-## 📚 Dependencies
-
-- **streamlit**: Web application framework
-- **pandas**: Data manipulation and analysis
-- **numpy**: Numerical computing
-- **plotly**: Interactive visualization library
-- **skyfield**: Astronomical calculations and SGP4/SDP4 orbit propagation
-- **spacetrack**: Space-Track API client
-- **scipy**: Scientific computing (statistics, integration)
-- **pillow**: Image processing
-- **requests**: HTTP library
-
-## 📖 References
-
-- Foster, J.L. & Estes, H.S. (1992). A parametric analysis of orbital debris collision probability and maneuver rate for space vehicles. NASA Technical Memorandum.
-- Chan, F.K. (1997). Spacecraft Collision Probability. The Aerospace Press.
-- Hoots, F.R. & Roehrich, R.L. (1980). Models for Propagation of NORAD Element Sets. Spacetrack Report No. 3.
-- NASA (2023). Spacecraft Conjunction Assessment and Collision Avoidance Best Practices Handbook. CARA Handbook Rev. 1.
-- NASA (2011). Process for Limiting Orbital Debris. NASA-STD-8719.14A.
-- Alfriend, K.T. & Akella, M.R. (2000). Probability of Collision Between Space Objects. J. Guidance, Control, and Dynamics, 23(5), 769–772.
-- ESA (2011). Efficient All vs. All Collision Risk Analyses — Smart Sieve Algorithm. ISSFD Proceedings.
-- Vallado, D.A. (2013). Fundamentals of Astrodynamics and Applications. 4th ed. Microcosm Press.
-- Hall, D.T. et al. (2023). A Multistep Probability of Collision Computational Algorithm. NASA NTRS.
-
-## 🔧 Technical Details
-
-- **Orbit Propagation**: SGP4/SDP4 via Skyfield library
-- **Data Source**: Space-Track GP endpoint (18th Space Defense Squadron, US Space Force)
-- **Coordinate System**: ECI (Earth-Centered Inertial) for calculations, ECEF (Earth-Centered Earth-Fixed) for ground tracks
-- **Time System**: UTC (Coordinated Universal Time)
-- **Performance Note**: Pure Python/Skyfield produces ~1M steps/sec. For large-scale operational simulations, Rust/Zig-based libraries like Astrora (4.8–15M steps/sec with SIMD) or SatKit (~3.4M steps/sec) are recommended.
-
-## 📄 License
-
-This project is provided for educational and research purposes. Please refer to individual library licenses for dependency licensing information.
-
-## 🤝 Contributing
-
-This is an academic project. For questions, suggestions, or collaboration opportunities, please open an issue or contact the maintainers.
-
-## ⚠️ Disclaimer
-
-This system is provided for educational and research purposes only. Collision probability calculations are approximations and should not be used for operational collision avoidance decisions without proper validation and expert review. Always consult official conjunction assessment services for operational satellite operations.
-
-## 📧 Contact
-
-For questions or support regarding this project, please contact the maintainers through the repository's issue tracker.
+### 4. Cinematic 3D Visualization & Simulators
+- **Live 3D Encounter Simulator**: Watch two satellites approach each other in real-time. Features a "Jump to TCA" button, precise 5-minute steps, and a dynamic HUD (Heads-Up Display) popping up at the moment of closest approach.
+- **Cyberpunk Orbital Web**: Real-time rendering of the Earth using NASA's *Blue Marble* texture with atmospheric glow, equator/meridian lines, and futuristic node-based orbit trails.
+- **Data Export & Radars**: 3x3 metric grids for Keplerian elements, Altitude vs. Inclination scatter plots, and one-click Excel (CSV) exports for both conjunction reports and orbital profiles.
 
 ---
 
-**Space Sciences and Technologies Graduation Project**  
-*Developed with ❤️ for the space community*
+## 📋 Methodology Deep-Dive
+
+**1. Orbit Propagation (SGP4/SDP4)**
+The NORAD standard SGP4 model (via the `Skyfield` Python library) calculates position vectors by accounting for gravity harmonics, atmospheric drag, and third-body effects. 
+
+**2. TCA Detection (5-Minute Coarse Scan)**
+For pairs passing the Apsis filter, Euclidean distances are calculated iteratively with strict **5-minute fixed time steps**. The global minimum in this array determines the exact **Time of Closest Approach (TCA)**.
+
+**3. Specific Kinetic Energy & Debris**
+If a collision occurs, its severity matters. The system calculates $E_c$ (J/g). If $E_c \geq 40$ J/g, it's flagged as a **Catastrophic Fragmentation**, meaning the satellite completely shatters, significantly contributing to orbital debris.
+
+---
+
+## 💻 Installation & Usage
+
+### Dependencies
+This project relies on the following Python packages. You can install them using `pip install -r requirements.txt`:
+- `streamlit` - Web application framework
+- `numpy`, `pandas`, `scipy` - Scientific computing & integration
+- `plotly` - Interactive 3D WebGL visualizations
+- `skyfield`, `spacetrack` - SGP4 propagation and TLE fetching
+- `Pillow`, `requests` - Texture processing and API calls
+
+### Quick Start
+1. Create a free account at [space-track.org](https://www.space-track.org).
+2. Clone this repository and run:
+   ```bash
+   streamlit run starweb-cara.py
