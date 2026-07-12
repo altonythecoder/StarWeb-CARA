@@ -457,6 +457,14 @@ h2,h3{
   color: var(--accent) !important;
 }
 
+/* Fix password visibility icon */
+button[aria-label="Toggle password visibility"] svg {
+    display: inline !important;
+}
+button[aria-label="Toggle password visibility"] * {
+    font-family: 'Material Icons' !important;
+}
+
 /* Enhanced text area */
 [data-testid="stTextArea"] > div > div > textarea {
   background: var(--bg) !important;
@@ -885,9 +893,23 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                 y = R * np.cos(lat_g) * np.sin(lon_g)
                 z = R * np.sin(lat_g)
 
-                return x, y, z, surf_color, colorscale
-            except Exception:
-                continue
+                        return x, y, z, surf_color, colorscale
+    except Exception:
+        continue
+
+# Eğer hiçbir URL çalışmazsa, basit bir mavi küre döndür.
+# Bu kısmı return None'u kaldırıp şu şekilde değiştir:
+lat = np.linspace(np.pi/2, -np.pi/2, 100)
+lon = np.linspace(-np.pi, np.pi, 200)
+lon_g, lat_g = np.meshgrid(lon, lat)
+R = EARTH_RADIUS_KM
+x = R * np.cos(lat_g) * np.cos(lon_g)
+y = R * np.cos(lat_g) * np.sin(lon_g)
+z = R * np.sin(lat_g)
+# Tek renk mavi bir yüzey rengi oluştur
+surf_color = np.ones_like(lat_g) * 0.5
+colorscale = [[0, 'rgb(10,20,40)'], [1, 'rgb(30,60,120)']]
+return x, y, z, surf_color, colorscale
 
         return None
     except Exception as e:
@@ -1610,7 +1632,7 @@ def fig_3d_orbits(sats):
     fig = go.Figure()
 
     # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=360, style="realistic")
+    earth = load_earth_texture(resolution=180, style="night")
     if earth:
         x, y, z, sc, cs = earth
         fig.add_trace(
@@ -3012,12 +3034,26 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
 
 # ── TAB 1: DASHBOARD ───────────────────────────────────────────────────
 with tab1:
-    with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
-        start_time = time.time()
-        df, n_filtered, n_total = compute_conjunctions(
-            sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
-        )
-        computation_time = time.time() - start_time
+    with tab1:
+    # Parametreler değiştiyse veya ilk çalıştırmaysa yeniden hesapla
+    current_params = (window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme)
+    if "conj_df" not in st.session_state or st.session_state.get("conj_params") != current_params:
+        with st.spinner("🚀 Computing conjunction analysis with apsis filter..."):
+            start_time = time.time()
+            df, n_filtered, n_total = compute_conjunctions(
+                sats, window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme
+            )
+            computation_time = time.time() - start_time
+            st.session_state.conj_df = df
+            st.session_state.conj_n_filtered = n_filtered
+            st.session_state.conj_n_total = n_total
+            st.session_state.conj_computation_time = computation_time
+            st.session_state.conj_params = current_params
+    else:
+        df = st.session_state.conj_df
+        n_filtered = st.session_state.conj_n_filtered
+        n_total = st.session_state.conj_n_total
+        computation_time = st.session_state.conj_computation_time
 
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     st.markdown(
@@ -3603,6 +3639,91 @@ def build_lightweight_animation(sat_a, sat_b, window_hrs, show_orbits, show_tca,
         )]
     )
     return fig, tca_idx, tca_dist, dists, jd_arr
+
+# ── TAB 4: LIVE SIMULATION (ÇALIŞAN, STABİL SÜRÜM) ─────────────────────
+with tab4:
+    st.markdown("## 🚀 Conjunction Encounter Simulator")
+    st.markdown("""
+    <div class="info-panel">
+        <b>🔬 Real‑time Encounter Animation</b><br>
+        Use <b>▶ Play</b> below the 3D view, adjust speed, or drag the timeline.
+    </div>
+    """, unsafe_allow_html=True)
+
+    sat_names = [s.name for s in sats]
+    if "my_sat" in st.session_state:
+        sat_names_ext = [st.session_state["my_sat"].name] + sat_names
+        all_sats_ext = [st.session_state["my_sat"]] + sats
+    else:
+        sat_names_ext = sat_names
+        all_sats_ext = sats
+
+    def_idx_a = 0
+    def_idx_b = min(1, len(sat_names_ext)-1) if len(sat_names_ext) > 1 else 0
+    if "live_sel_a" in st.session_state and st.session_state.live_sel_a in sat_names_ext:
+        def_idx_a = sat_names_ext.index(st.session_state.live_sel_a)
+    if "live_sel_b" in st.session_state and st.session_state.live_sel_b in sat_names_ext:
+        def_idx_b = sat_names_ext.index(st.session_state.live_sel_b)
+
+    c1, c2, c3 = st.columns([2,2,1])
+    with c1:
+        sat_a_name = st.selectbox("🛰️ Satellite A", sat_names_ext, index=def_idx_a, key="live_sel_a")
+    with c2:
+        sat_b_name = st.selectbox("🛰️ Satellite B", sat_names_ext, index=def_idx_b, key="live_sel_b")
+    with c3:
+        sim_hours = st.slider("⏱️ Window (hrs)", 1, 48, 6, key="live_window_hrs")
+
+    with st.expander("⚙️ Display Options"):
+        show_orbits = st.checkbox("Orbit Trails", value=True)
+        show_tca = st.checkbox("TCA Ring", value=True)
+        anim_speed = st.slider("Playback Speed", 0.5, 3.0, 1.0, 0.1)
+
+    if st.button("🚀 GENERATE SIMULATION", use_container_width=True, disabled=(sat_a_name == sat_b_name)):
+        if sat_a_name == sat_b_name:
+            st.warning("Please select two different satellites.")
+        else:
+            sat_a = next(s for s in all_sats_ext if s.name == sat_a_name)
+            sat_b = next(s for s in all_sats_ext if s.name == sat_b_name)
+
+            with st.spinner("🧮 Computing encounter geometry..."):
+                fig, tca_idx, tca_dist, dists, jd_arr = build_lightweight_animation(
+                    sat_a, sat_b, sim_hours, show_orbits, show_tca, anim_speed, ts
+                )
+
+            tca_utc = ts.tt_jd(jd_arr[tca_idx]).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+            sev, col = risk_level(collision_probability_isotropic(tca_dist, sigma_km, hbr_km))
+            tca_tplus = int(round((jd_arr[tca_idx] - jd_arr[0]) * 1440))
+
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("TCA Time", tca_utc)
+            m2.metric("Min. Distance", f"{tca_dist:.3f} km")
+            m3.metric("TCA @ T+", f"{tca_tplus} min")
+            m4.metric("Risk Level", sev)
+
+            st.info("💡 Drag slider or click ▶ Play below the 3D view. Rotate only when paused.")
+            st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': False})
+
+            st.markdown("**📊 Distance Profile**")
+            t_ax = (jd_arr - jd_arr[0]) * 24.0
+            fig_dp = go.Figure()
+            fig_dp.add_hline(y=hbr_km, line=dict(color='#ff2b4d', dash='dot'),
+                             annotation_text=f"HBR ({hbr_km*1000:.0f} m)")
+            fig_dp.add_trace(go.Scatter(x=t_ax, y=dists, mode='lines',
+                                        line=dict(color='#00c8ff', width=1.5),
+                                        fill='tozeroy', fillcolor='rgba(0,200,255,.04)'))
+            fig_dp.add_trace(go.Scatter(x=[t_ax[tca_idx]], y=[tca_dist],
+                                        mode='markers+text',
+                                        marker=dict(color='#ff2b4d', size=10),
+                                        text=[f"TCA {tca_dist:.1f} km"],
+                                        textfont=dict(size=9, color='#ff2b4d'),
+                                        showlegend=False))
+            fig_dp.update_layout(**DARK, height=250,
+                                 xaxis=dict(title="Time (hours)", gridcolor='#1a2740'),
+                                 yaxis=dict(title="Distance (km)", gridcolor='#1a2740'),
+                                 margin=dict(l=10, r=10, t=30, b=10))
+            st.plotly_chart(fig_dp, use_container_width=True, config={'displayModeBar': False})
+    else:
+        st.info("👆 Configure and press GENERATE to start the encounter animation.")
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
