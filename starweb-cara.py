@@ -235,8 +235,9 @@ def sync_mass_defaults(group_key: str):
 # ================================================================================
 #  CSS — ENHANCED MISSION CONTROL DARK THEME WITH THEME SELECTOR
 # ================================================================================
+
 def get_theme_css(theme="dark"):
-    # Bu sabit CSS'i her iki temada da kullanacağız
+    # Şifre göster/gizle butonundaki "visibility" yazısını yok edip göz ikonu koyar
     password_fix_css = """
     button[aria-label*="visibility"] span,
     button[aria-label*="show"] span,
@@ -254,23 +255,11 @@ def get_theme_css(theme="dark"):
     
     if theme == "light":
         return f"""
-        <style>
-        ... (mevcut CSS)
-        {password_fix_css}
-        </style>
-        """
-    else:
-        return f"""
-        <style>
-        ... (mevcut CSS)
-        {password_fix_css}
-        </style>
-        """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-:root {
+:root {{
   --bg:#ffffff; --bg2:#f8f9fa; --bg3:#e9ecef; --border:#dee2e6;
   --accent:#0066cc; --accent2:#004499; --warn:#ffc107; --crit:#dc3545;
   --text:#212529; --dim:#6c757d;
@@ -279,29 +268,27 @@ def get_theme_css(theme="dark"):
   --gradient-dark: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
   --shadow-glow: 0 0 20px rgba(0, 102, 204, 0.1);
   --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
-}
+}}
 
-/* Base Styles */
-html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
+html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{{
   background:var(--bg) !important;
   color:var(--text) !important;
   font-family:var(--ui) !important;
   background-image: var(--gradient-dark);
-}
+}}
 
-[data-testid="stSidebar"]{
+[data-testid="stSidebar"]{{
   background:var(--bg2) !important;
   border-right:1px solid var(--border) !important;
   box-shadow: var(--shadow-card);
-}
+}}
 
-[data-testid="stSidebar"] *{
+[data-testid="stSidebar"] *{{
   color:var(--text) !important;
   font-family:var(--ui) !important;
-}
+}}
 
-/* Typography */
-h1{
+h1{{
   font-family:var(--sans) !important;
   font-weight:900 !important;
   font-size:2.2rem !important;
@@ -310,9 +297,9 @@ h1{
   text-transform:uppercase !important;
   line-height:1.2 !important;
   text-shadow: none;
-}
+}}
 
-h2,h3{
+h2,h3{{
   font-family:var(--sans) !important;
   color:var(--accent) !important;
   font-weight:700 !important;
@@ -321,10 +308,9 @@ h2,h3{
   border-bottom:1px solid var(--border) !important;
   padding-bottom:.4em !important;
   margin-bottom:1em !important;
-}
+}}
 
-/* Metric Cards */
-[data-testid="metric-container"]{
+[data-testid="metric-container"]{{
   background:var(--bg) !important;
   border:1px solid var(--border) !important;
   border-left:4px solid var(--accent) !important;
@@ -332,31 +318,30 @@ h2,h3{
   border-radius:8px !important;
   box-shadow: var(--shadow-card);
   transition: all 0.3s ease !important;
-}
+}}
 
-[data-testid="metric-container"]:hover{
+[data-testid="metric-container"]:hover{{
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow);
-}
+}}
 
-[data-testid="metric-container"] label{
+[data-testid="metric-container"] label{{
   font-family:var(--ui) !important;
   font-size:.7rem !important;
   letter-spacing:.12em !important;
   color:var(--dim) !important;
   text-transform:uppercase !important;
   font-weight:600 !important;
-}
+}}
 
-[data-testid="metric-container"] [data-testid="stMetricValue"]{
+[data-testid="metric-container"] [data-testid="stMetricValue"]{{
   font-family:var(--mono) !important;
   color:var(--accent) !important;
   font-size:1.8rem !important;
   font-weight:700 !important;
-}
+}}
 
-/* Buttons */
-.stButton button{
+.stButton button{{
   background:linear-gradient(135deg, rgba(0, 102, 204, 0.1) 0%, rgba(0, 68, 153, 0.1) 100%) !important;
   border:1px solid var(--accent) !important;
   color:var(--accent) !important;
@@ -365,34 +350,31 @@ h2,h3{
   border-radius:6px !important;
   padding:12px 24px !important;
   transition: all 0.3s ease !important;
-}
+}}
 
-.stButton button:hover{
+.stButton button:hover{{
   background:var(--accent) !important;
   color:#fff !important;
   box-shadow: var(--shadow-glow);
-}
+}}
 
-/* Input Fields */
-.stTextInput input, .stNumberInput input, .stSelectbox select{
+.stTextInput input, .stNumberInput input, .stSelectbox select{{
   background:var(--bg) !important;
   border:1px solid var(--border) !important;
   color:var(--text) !important;
   border-radius:6px !important;
-}
+}}
 
-.stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus{
+.stTextInput input:focus, .stNumberInput input:focus, .stSelectbox select:focus{{
   border-color:var(--accent) !important;
   box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1) !important;
-}
+}}
 
-/* Sliders */
-.stSlider [role="slider"]{
+.stSlider [role="slider"]{{
   background:var(--accent) !important;
-}
+}}
 
-/* Info Panels */
-.info-panel{
+.info-panel{{
   background:var(--bg2) !important;
   border:1px solid var(--border) !important;
   border-left:4px solid var(--accent) !important;
@@ -400,9 +382,9 @@ h2,h3{
   border-radius:8px !important;
   margin:16px 0 !important;
   color:var(--text) !important;
-}
+}}
 
-.warn-panel{
+.warn-panel{{
   background:var(--bg2) !important;
   border:1px solid var(--border) !important;
   border-left:4px solid var(--warn) !important;
@@ -410,9 +392,9 @@ h2,h3{
   border-radius:8px !important;
   margin:16px 0 !important;
   color:var(--text) !important;
-}
+}}
 
-.crit-panel{
+.crit-panel{{
   background:var(--bg2) !important;
   border:1px solid var(--border) !important;
   border-left:4px solid var(--crit) !important;
@@ -420,108 +402,86 @@ h2,h3{
   border-radius:8px !important;
   margin:16px 0 !important;
   color:var(--text) !important;
-}
+}}
 
-/* Tabs */
-[data-testid="stTabs"] [role="tablist"]{
+[data-testid="stTabs"] [role="tablist"]{{
   background:var(--bg2) !important;
   border:1px solid var(--border) !important;
   border-radius:8px !important;
   padding:8px !important;
-}
+}}
 
-[data-testid="stTabs"] [role="tab"][aria-selected="true"]{
+[data-testid="stTabs"] [role="tab"][aria-selected="true"]{{
   background:var(--accent) !important;
   color:#fff !important;
   border-radius:6px !important;
-}
+}}
 
-[data-testid="stTabs"] [role="tab"][aria-selected="false"]{
+[data-testid="stTabs"] [role="tab"][aria-selected="false"]{{
   color:var(--dim) !important;
-}
+}}
 
-/* Dataframe */
-.stDataFrame{
+.stDataFrame{{
   background:var(--bg) !important;
   border:1px solid var(--border) !important;
   border-radius:8px !important;
-}
+}}
 
-.stDataFrame table{
+.stDataFrame table{{
   color:var(--text) !important;
-}
+}}
 
-.stDataFrame th{
+.stDataFrame th{{
   background:var(--bg2) !important;
   color:var(--accent) !important;
   font-weight:600 !important;
-}
+}}
 
-.stDataFrame tr:hover{
+.stDataFrame tr:hover{{
   background:var(--bg2) !important;
-}
+}}
 
-/* Sidebar Elements */
-[data-testid="stSidebar"] .stSlider label{
+[data-testid="stSidebar"] .stSlider label{{
   color:var(--text) !important;
   font-weight:600 !important;
-}
+}}
 
-[data-testid="stSidebar"] .stSelectbox label{
+[data-testid="stSidebar"] .stSelectbox label{{
   color:var(--text) !important;
   font-weight:600 !important;
-}
+}}
 
-/* Expander */
-[data-testid="stExpander"] {
+[data-testid="stExpander"] {{
   background: var(--bg2) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-}
+}}
 
-[data-testid="stExpander"] > div > div > svg {
+[data-testid="stExpander"] > div > div > svg {{
   color: var(--accent) !important;
-}
+}}
 
-/* Fix password visibility icon */
-button[aria-label="Toggle password visibility"] svg {
-    display: inline !important;
-}
-button[aria-label="Toggle password visibility"] * {
-    font-family: 'Material Icons' !important;
-}
-
-/* Enhanced text area */
-[data-testid="stTextArea"] > div > div > textarea {
+[data-testid="stTextArea"] > div > div > textarea {{
   background: var(--bg) !important;
   border: 1px solid var(--border) !important;
   border-radius: 6px !important;
   color: var(--text) !important;
   font-family: var(--mono) !important;
-}
+}}
 
-/* Hide sidebar collapse button and header */
-[data-testid="stSidebarCollapseButton"]{display:none !important;}
-header[data-testid="stHeader"]{display:none !important;}
+[data-testid="stSidebarCollapseButton"]{{display:none !important;}}
+header[data-testid="stHeader"]{{display:none !important;}}
+
+{password_fix_css}
 </style>
 """
     else:
-        # Original Dark Mission Control Theme
-        return """
-        
-/* Fix password visibility icon */
-button[aria-label="Toggle password visibility"] svg {
-    display: inline !important;
-}
-button[aria-label="Toggle password visibility"] * {
-    font-family: 'Material Icons' !important;
-}
-        
+        return f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-:root {
+:root {{
   --bg:#05070a; --bg2:#0a0f18; --bg3:#121824; --border:#1e2d42;
   --accent:#00d4ff; --accent2:#00ffa8; --warn:#ffb800; --crit:#ff3d5c;
   --text:#c4d4e8; --dim:#5a7a94;
@@ -530,29 +490,27 @@ button[aria-label="Toggle password visibility"] * {
   --gradient-dark: linear-gradient(180deg, #0a0f18 0%, #05070a 100%);
   --shadow-glow: 0 0 20px rgba(0, 212, 255, 0.15);
   --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
+}}
 
-/* Base Styles */
-html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{
+html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{{
   background:var(--bg) !important;
   color:var(--text) !important;
   font-family:var(--ui) !important;
   background-image: var(--gradient-dark);
-}
+}}
 
-[data-testid="stSidebar"]{
+[data-testid="stSidebar"]{{
   background:var(--bg2) !important;
   border-right:1px solid var(--border) !important;
   box-shadow: var(--shadow-card);
-}
+}}
 
-[data-testid="stSidebar"] *{
+[data-testid="stSidebar"] *{{
   color:var(--text) !important;
   font-family:var(--ui) !important;
-}
+}}
 
-/* Typography */
-h1{
+h1{{
   font-family:var(--sans) !important;
   font-weight:900 !important;
   font-size:2.2rem !important;
@@ -561,9 +519,9 @@ h1{
   text-transform:uppercase !important;
   line-height:1.2 !important;
   text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
-}
+}}
 
-h2,h3{
+h2,h3{{
   font-family:var(--sans) !important;
   color:var(--accent) !important;
   font-weight:700 !important;
@@ -572,10 +530,9 @@ h2,h3{
   border-bottom:1px solid var(--border) !important;
   padding-bottom:.4em !important;
   margin-bottom:1em !important;
-}
+}}
 
-/* Metric Cards */
-[data-testid="metric-container"]{
+[data-testid="metric-container"]{{
   background:var(--bg3) !important;
   border:1px solid var(--border) !important;
   border-left:4px solid var(--accent) !important;
@@ -583,31 +540,30 @@ h2,h3{
   border-radius:8px !important;
   box-shadow: var(--shadow-card);
   transition: all 0.3s ease !important;
-}
+}}
 
-[data-testid="metric-container"]:hover{
+[data-testid="metric-container"]:hover{{
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow);
-}
+}}
 
-[data-testid="metric-container"] label{
+[data-testid="metric-container"] label{{
   font-family:var(--ui) !important;
   font-size:.7rem !important;
   letter-spacing:.12em !important;
   color:var(--dim) !important;
   text-transform:uppercase !important;
   font-weight:600 !important;
-}
+}}
 
-[data-testid="metric-container"] [data-testid="stMetricValue"]{
+[data-testid="metric-container"] [data-testid="stMetricValue"]{{
   font-family:var(--mono) !important;
   color:var(--accent) !important;
   font-size:1.8rem !important;
   font-weight:700 !important;
-}
+}}
 
-/* Buttons */
-.stButton button{
+.stButton button{{
   background:linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(0, 255, 168, 0.1) 100%) !important;
   border:1px solid var(--accent) !important;
   color:var(--accent) !important;
@@ -620,28 +576,27 @@ h2,h3{
   transition:all 0.3s ease !important;
   font-weight:600 !important;
   box-shadow: 0 4px 15px rgba(0, 212, 255, 0.2);
-}
+}}
 
-.stButton button:hover{
+.stButton button:hover{{
   background:var(--gradient-primary) !important;
   color:var(--bg) !important;
   transform: translateY(-2px);
   box-shadow: var(--shadow-glow);
-}
+}}
 
-.stButton button:active{
+.stButton button:active{{
   transform: translateY(0);
-}
+}}
 
-/* Tabs */
-[data-baseweb="tab-list"]{
+[data-baseweb="tab-list"]{{
   background:var(--bg2) !important;
   border-bottom:2px solid var(--border) !important;
   gap:0 !important;
   padding: 0 8px !important;
-}
+}}
 
-[data-baseweb="tab"]{
+[data-baseweb="tab"]{{
   font-family:var(--sans) !important;
   font-weight:600 !important;
   font-size:.85rem !important;
@@ -651,16 +606,15 @@ h2,h3{
   padding:14px 24px !important;
   border-radius:8px 8px 0 0 !important;
   transition: all 0.3s ease !important;
-}
+}}
 
-[aria-selected="true"][data-baseweb="tab"]{
+[aria-selected="true"][data-baseweb="tab"]{{
   color:var(--accent) !important;
   background:linear-gradient(180deg, rgba(0, 212, 255, 0.1) 0%, transparent 100%) !important;
   border-bottom:2px solid var(--accent) !important;
-}
+}}
 
-/* Input Fields */
-[data-testid="stTextInput"] input{
+[data-testid="stTextInput"] input{{
   background:var(--bg3) !important;
   border-color:var(--border) !important;
   color:var(--text) !important;
@@ -669,62 +623,58 @@ h2,h3{
   border-radius:6px !important;
   padding:10px 14px !important;
   transition: all 0.3s ease !important;
-}
+}}
 
-[data-testid="stTextInput"] input:focus{
+[data-testid="stTextInput"] input:focus{{
   border-color:var(--accent) !important;
   box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
-}
+}}
 
-[data-testid="stSelectbox"]>div>div{
+[data-testid="stSelectbox"]>div>div{{
   background:var(--bg3) !important;
   border-color:var(--border) !important;
   border-radius:6px !important;
-}
+}}
 
-/* Alert Messages */
-[data-testid="stInfo"]{
+[data-testid="stInfo"]{{
   background:rgba(0,212,255,.06) !important;
   border:1px solid rgba(0,212,255,.25) !important;
   border-radius:8px !important;
   padding:16px 20px !important;
-}
+}}
 
-[data-testid="stSuccess"]{
+[data-testid="stSuccess"]{{
   background:rgba(0,255,168,.06) !important;
   border:1px solid rgba(0,255,168,.25) !important;
   border-radius:8px !important;
   padding:16px 20px !important;
-}
+}}
 
-[data-testid="stError"]{
+[data-testid="stError"]{{
   background:rgba(255,61,92,.08) !important;
   border:1px solid rgba(255,61,92,.35) !important;
   border-radius:8px !important;
   padding:16px 20px !important;
-}
+}}
 
-[data-testid="stWarning"]{
+[data-testid="stWarning"]{{
   background:rgba(255,184,0,.06) !important;
   border:1px solid rgba(255,184,0,.25) !important;
   border-radius:8px !important;
   padding:16px 20px !important;
-}
+}}
 
-/* DataFrames */
-[data-testid="stDataFrame"]{
+[data-testid="stDataFrame"]{{
   border:1px solid var(--border) !important;
   border-radius:8px !important;
   overflow:hidden !important;
   box-shadow: var(--shadow-card);
-}
+}}
 
-/* Toolbar */
-[data-testid="stElementToolbarButton"]{display:none !important;}
-[data-testid="stElementToolbar"]{display:none !important;}
+[data-testid="stElementToolbarButton"]{{display:none !important;}}
+[data-testid="stElementToolbar"]{{display:none !important;}}
 
-/* Download Button */
-[data-testid="stDownloadButton"] button{
+[data-testid="stDownloadButton"] button{{
   width:auto !important;
   background:var(--bg3) !important;
   border:1px solid var(--accent) !important;
@@ -736,37 +686,31 @@ h2,h3{
   padding:8px 18px !important;
   border-radius:6px !important;
   transition: all 0.3s ease !important;
-}
+}}
 
-[data-testid="stDownloadButton"] button:hover{
+[data-testid="stDownloadButton"] button:hover{{
   background:var(--gradient-primary) !important;
   color:var(--bg) !important;
   transform: translateY(-2px);
-}
+}}
 
-/* Scrollbar */
-::-webkit-scrollbar{width:6px;height:6px;}
-::-webkit-scrollbar-track{background:var(--bg2);}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
-::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+::-webkit-scrollbar{{width:6px;height:6px;}}
+::-webkit-scrollbar-track{{background:var(--bg2);}}
+::-webkit-scrollbar-thumb{{background:var(--border);border-radius:3px;}}
+::-webkit-scrollbar-thumb:hover{{background:var(--accent);}}
 
-/* Layout */
-section[data-testid="stMain"]>div{background:var(--bg) !important;}
-div[data-testid="stVerticalBlock"]{background:transparent !important;}
+section[data-testid="stMain"]>div{{background:var(--bg) !important;}}
+div[data-testid="stVerticalBlock"]{{background:transparent !important;}}
 
-/* Markdown */
-.stMarkdown,.stMarkdown p{color:var(--text) !important;line-height:1.7 !important;}
+.stMarkdown,.stMarkdown p{{color:var(--text) !important;line-height:1.7 !important;}}
 
-/* Slider */
-[data-baseweb="slider"]{background:var(--bg3) !important;}
-[data-baseweb="slider-handle"]{background:var(--accent) !important;}
+[data-baseweb="slider"]{{background:var(--bg3) !important;}}
+[data-baseweb="slider-handle"]{{background:var(--accent) !important;}}
 
-/* Progress Bar */
-[data-testid="stProgress"]{background:var(--bg3) !important;}
-[data-testid="stProgress"] > div > div > div{background:var(--gradient-primary) !important;}
+[data-testid="stProgress"]{{background:var(--bg3) !important;}}
+[data-testid="stProgress"] > div > div > div{{background:var(--gradient-primary) !important;}}
 
-/* Custom Panels */
-.info-panel{
+.info-panel{{
   background:rgba(0,212,255,.04);
   border:1px solid rgba(0,212,255,.18);
   border-left:4px solid var(--accent);
@@ -776,9 +720,9 @@ div[data-testid="stVerticalBlock"]{background:transparent !important;}
   font-size:.9rem;
   line-height:1.7;
   box-shadow: 0 4px 15px rgba(0, 212, 255, 0.1);
-}
+}}
 
-.warn-panel{
+.warn-panel{{
   background:rgba(255,184,0,.04);
   border:1px solid rgba(255,184,0,.18);
   border-left:4px solid var(--warn);
@@ -788,9 +732,9 @@ div[data-testid="stVerticalBlock"]{background:transparent !important;}
   font-size:.9rem;
   line-height:1.7;
   box-shadow: 0 4px 15px rgba(255, 184, 0, 0.1);
-}
+}}
 
-.crit-panel{
+.crit-panel{{
   background:rgba(255,61,92,.04);
   border:1px solid rgba(255,61,92,.18);
   border-left:4px solid var(--crit);
@@ -800,54 +744,49 @@ div[data-testid="stVerticalBlock"]{background:transparent !important;}
   font-size:.9rem;
   line-height:1.7;
   box-shadow: 0 4px 15px rgba(255, 61, 92, 0.1);
-}
+}}
 
-/* Animation for loading */
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
+@keyframes pulse {{
+  0%, 100% {{ opacity: 1; }}
+  50% {{ opacity: 0.5; }}
+}}
 
-[data-testid="stSpinner"] > div {
+[data-testid="stSpinner"] > div {{
   animation: pulse 1.5s ease-in-out infinite;
-}
+}}
 
-/* Enhanced selectbox */
-[data-baseweb="select"] *{background:var(--bg3) !important;color:var(--text) !important;}
-[data-baseweb="popover"]{background:var(--bg3) !important;border:1px solid var(--border) !important;}
-[data-baseweb="menu"]{background:var(--bg3) !important;}
+[data-baseweb="select"] *{{background:var(--bg3) !important;color:var(--text) !important;}}
+[data-baseweb="popover"]{{background:var(--bg3) !important;border:1px solid var(--border) !important;}}
+[data-baseweb="menu"]{{background:var(--bg3) !important;}}
 
-/* Sidebar top header (broken Material Icons icon) hide */
-[data-testid="stSidebarHeader"]{display:none !important;}
-[data-testid="stSidebarCollapseButton"]{display:none !important;}
-header[data-testid="stHeader"]{display:none !important;}
+[data-testid="stSidebarHeader"]{{display:none !important;}}
+[data-testid="stSidebarCollapseButton"]{{display:none !important;}}
+header[data-testid="stHeader"]{{display:none !important;}}
 
-/* Enhanced text area */
-[data-testid="stTextArea"] > div > div > textarea {
+[data-testid="stTextArea"] > div > div > textarea {{
   background: var(--bg3) !important;
   border: 1px solid var(--border) !important;
   border-radius: 6px !important;
   color: var(--text) !important;
   font-family: var(--mono) !important;
-}
+}}
 
-/* Expander */
-[data-testid="stExpander"] {
+[data-testid="stExpander"] {{
   background: var(--bg3) !important;
   border: 1px solid var(--border) !important;
   border-radius: 8px !important;
-}
+}}
 
-[data-testid="stExpander"] > div > div > svg {
+[data-testid="stExpander"] > div > div > svg {{
   color: var(--accent) !important;
-}
+}}
 
-/* Hide sidebar collapse button and header */
-[data-testid="stSidebarCollapseButton"]{display:none !important;}
-header[data-testid="stHeader"]{display:none !important;}
+[data-testid="stSidebarCollapseButton"]{{display:none !important;}}
+header[data-testid="stHeader"]{{display:none !important;}}
+
+{password_fix_css}
 </style>
 """
-
 
 # ================================================================================
 #  EARTH VIEW - ENHANCED WITH ERROR HANDLING
@@ -1675,46 +1614,7 @@ def fig_3d_orbits(sats):
     earth_trace = create_earth_trace("night", resolution=50)
     fig.add_trace(earth_trace)
 
-    # Load Earth texture with enhanced styling
-    earth = load_earth_texture(resolution=180, style="night")
-    if earth:
-        x, y, z, sc, cs = earth
-        fig.add_trace(
-            go.Surface(
-                x=x,
-                y=y,
-                z=z,
-                surfacecolor=sc,
-                colorscale=cs,
-                showscale=False,
-                opacity=0.95,
-                hoverinfo="skip",
-                name="Earth",
-                lightposition=dict(x=0, y=0, z=10000),
-                lighting=dict(
-                    ambient=0.5,
-                    diffuse=0.9,
-                    specular=0.1,
-                    roughness=0.8,
-                    fresnel=0.1
-                ),
-            )
-        )
-    else:
-        r = EARTH_RADIUS_KM
-        u, v = np.mgrid[0 : 2 * np.pi : 40j, 0 : np.pi : 20j]
-        fig.add_trace(
-            go.Surface(
-                x=r * np.cos(u) * np.sin(v),
-                y=r * np.sin(u) * np.sin(v),
-                z=r * np.cos(v),
-                colorscale="Blues",
-                opacity=0.5,
-                showscale=False,
-            )
-        )
-
-    # Use enhanced color palette
+     # Use enhanced color palette
     colors = ENHANCED_COLORS
     offsets = np.linspace(0, 95, 80) / 1440.0
 
