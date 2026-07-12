@@ -67,14 +67,27 @@ If a collision occurs, its severity matters. The system calculates $E_c$ (J/g). 
 ## 💻 Installation & Usage
 
 ### Prerequisites
-Before you begin, ensure you have met the following requirements:
-* **Python 3.9 or higher** installed on your system.
-* **Git** installed.
-* A free account at [Space-Track.org](https://www.space-track.org) (required for pulling live TLE orbital data).
+* Python 3.9+
+* Git
+* [Space-Track.org](https://www.space-track.org) Account
 
-### Step-by-Step Installation
+### Setup
 
-**1. Clone the repository** Open your terminal or command prompt and clone this repository to your local machine:
-```bash
+# 1. Clone
 git clone [https://github.com/altonythecoder/StarWeb-CARA.git](https://github.com/altonythecoder/StarWeb-CARA.git)
+cd StarWeb-CARA
+
+# 2. Virtual Env
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+
+# Mac/Linux:
+source venv/bin/activate
+
+# 3. Dependencies
+pip install -r requirements.txt
+
+# 4. Launch
+streamlit run starweb-cara.pym/altonythecoder/StarWeb-CARA.git](https://github.com/altonythecoder/StarWeb-CARA.git)
 cd StarWeb-CARA
