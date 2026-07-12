@@ -64,6 +64,65 @@ If a collision occurs, its severity matters. The system calculates $E_c$ (J/g). 
 
 ---
 
+### Using the Tabs
+
+**Dashboard**: Overview of conjunction events with risk metrics, apsis filter statistics, and downloadable CSV reports
+
+**Conjunction Analysis**: Detailed review of individual conjunction events with distance profiles, collision probability model comparisons, Mahalanobis test results, and fragmentation analysis
+
+**Your Satellite**: Analyze your own satellite's collision risk with existing fleets. Enter your TLE data in the sidebar under "2 — ENTER YOUR SATELLITE (TLE)"
+
+**Live Simulation**: Watch real-time 3D animation of satellite encounters with Play/Stop/Speed controls and Jump to TCA functionality
+
+**3D Orbit & Ground Track**: Visualize satellite orbits in 3D space and ground track maps
+
+**Orbital Elements**: View Kepler orbital elements table and altitude/inclination distribution
+
+**Methodology**: Detailed theoretical background and algorithm explanations
+
+### Custom Satellite Analysis
+
+To analyze your own satellite:
+
+1. Navigate to the sidebar section "2 — ENTER YOUR SATELLITE (TLE)"
+2. Enter your TLE data in the text area (3-line format: name + line1 + line2)
+3. Click "LOAD MANUAL TLE"
+4. Go to the "YOUR SATELLITE" tab to view conjunction analysis results
+
+## 📚 Dependencies
+
+- **streamlit**: Web application framework
+- **pandas**: Data manipulation and analysis
+- **numpy**: Numerical computing
+- **plotly**: Interactive visualization library
+- **skyfield**: Astronomical calculations and SGP4/SDP4 orbit propagation
+- **spacetrack**: Space-Track API client
+- **scipy**: Scientific computing (statistics, integration)
+- **pillow**: Image processing
+- **requests**: HTTP library
+
+## 📖 References
+
+- Foster, J.L. & Estes, H.S. (1992). A parametric analysis of orbital debris collision probability and maneuver rate for space vehicles. NASA Technical Memorandum.
+- Chan, F.K. (1997). Spacecraft Collision Probability. The Aerospace Press.
+- Hoots, F.R. & Roehrich, R.L. (1980). Models for Propagation of NORAD Element Sets. Spacetrack Report No. 3.
+- NASA (2023). Spacecraft Conjunction Assessment and Collision Avoidance Best Practices Handbook. CARA Handbook Rev. 1.
+- NASA (2011). Process for Limiting Orbital Debris. NASA-STD-8719.14A.
+- Alfriend, K.T. & Akella, M.R. (2000). Probability of Collision Between Space Objects. J. Guidance, Control, and Dynamics, 23(5), 769–772.
+- ESA (2011). Efficient All vs. All Collision Risk Analyses — Smart Sieve Algorithm. ISSFD Proceedings.
+- Vallado, D.A. (2013). Fundamentals of Astrodynamics and Applications. 4th ed. Microcosm Press.
+- Hall, D.T. et al. (2023). A Multistep Probability of Collision Computational Algorithm. NASA NTRS.
+
+## 🔧 Technical Details
+
+- **Orbit Propagation**: SGP4/SDP4 via Skyfield library
+- **Data Source**: Space-Track GP endpoint (18th Space Defense Squadron, US Space Force)
+- **Coordinate System**: ECI (Earth-Centered Inertial) for calculations, ECEF (Earth-Centered Earth-Fixed) for ground tracks
+- **Time System**: UTC (Coordinated Universal Time)
+- **Performance Note**: Pure Python/Skyfield produces ~1M steps/sec. For large-scale operational simulations, Rust/Zig-based libraries like Astrora (4.8–15M steps/sec with SIMD) or SatKit (~3.4M steps/sec) are recommended.
+
+
+
 ## 💻 Installation & Usage
 
 ### Prerequisites
@@ -89,3 +148,27 @@ pip install -r requirements.txt
 
 # 4. Launch
 streamlit run starweb-cara.py
+```
+
+## 📄 License
+
+This project is provided for educational and research purposes. Please refer to individual library licenses for dependency licensing information.
+
+## 🤝 Contributing
+
+This is an academic project. For questions, suggestions, or collaboration opportunities, please open an issue or contact the maintainers.
+
+## ⚠️ Disclaimer
+
+This system is provided for educational and research purposes only. Collision probability calculations are approximations and should not be used for operational collision avoidance decisions without proper validation and expert review. Always consult official conjunction assessment services for operational satellite operations.
+
+## 📧 Contact
+
+For questions or support regarding this project, please contact the maintainers through the repository's issue tracker.
+
+---
+
+**Space Sciences and Technologies Graduation Project**  
+*Developed with ❤️ for the space community*
+
+
