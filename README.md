@@ -66,16 +66,39 @@ If a collision occurs, its severity matters. The system calculates $E_c$ (J/g). 
 
 ## 💻 Installation & Usage
 
-### Dependencies
-This project relies on the following Python packages. You can install them using `pip install -r requirements.txt`:
-- `streamlit` - Web application framework
-- `numpy`, `pandas`, `scipy` - Scientific computing & integration
-- `plotly` - Interactive 3D WebGL visualizations
-- `skyfield`, `spacetrack` - SGP4 propagation and TLE fetching
-- `Pillow`, `requests` - Texture processing and API calls
+### Prerequisites
+Before you begin, ensure you have met the following requirements:
+- **Python 3.9 or higher** installed on your system.
+- **Git** installed.
+- A free account at [Space-Track.org](https://www.space-track.org) (required for pulling live TLE orbital data).
 
-### Quick Start
-1. Create a free account at [space-track.org](https://www.space-track.org).
-2. Clone this repository and run:
-   ```bash
-   streamlit run starweb-cara.py
+### Step-by-Step Installation
+
+**1. Clone the repository** Open your terminal or command prompt and clone this repository to your local machine:
+```bash
+git clone [https://github.com/altonythecoder/StarWeb-CARA.git](https://github.com/altonythecoder/StarWeb-CARA.git)
+cd StarWeb-CARA
+
+2. Create a Virtual Environment (Recommended) It is highly recommended to use a virtual environment to isolate project dependencies and avoid conflicts.
+
+For Windows:
+python -m venv venv
+venv\Scripts\activate
+
+For macOS and Linux:
+python3 -m venv venv
+source venv/bin/activate
+
+Install Dependencies Install the required Python packages using the provided requirements.txt file. This will install core libraries such as streamlit, skyfield, plotly, scipy, and spacetrack:
+pip install -r requirements.txt
+
+Launch the Application Start the Streamlit web server. This will automatically open the application in your default web browser:
+streamlit run starweb-cara.py
+
+🚀 Quick Start Guide (In-App)
+Once the app launches, locate the Control Panel on the left sidebar.
+Enter your Space-Track.org email and password in the authentication section.
+Select a target constellation (e.g., STARLINK, ONEWEB, ISS, KUIPER).
+Click DOWNLOAD LIVE TLE DATA to fetch the real-time orbital elements.
+Adjust your analysis parameters (Time Window, Position Uncertainty σ, Hard-Body Radius, Satellite Masses).
+Explore the Live Simulation, Conjunction Analysis, and 3D Orbit tabs to analyze collision risks!
