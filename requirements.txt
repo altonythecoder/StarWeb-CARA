@@ -1,9 +1,9 @@
 streamlit
-pandas
 numpy
+pandas
 plotly
+scipy
 skyfield
 spacetrack
-scipy
-Pillow
 requests
+Pillow
