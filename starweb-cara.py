@@ -3461,7 +3461,7 @@ with tab3:
 
 
 # --------------------------------------------------------------
-#  TAB 4: LIVE SIMULATION  (PROFESSIONAL YENİDEN TASARIM)
+#  TAB 4: LIVE SIMULATION  (YENİ, AKICI GERÇEK ZAMANLI YÖNTEM)
 # --------------------------------------------------------------
 with tab4:
     st.markdown("## 🚀 Live 3D Orbit Simulation")
@@ -3470,299 +3470,346 @@ with tab4:
         <div class="info-panel">
             <b>🔬 Professional Conjunction Visualization</b><br>
             Watch the encounter between two satellites with <b>real‑time</b> animation.
-            Focus on the risk moment with Play / Stop / Speed controls and <b>Jump to TCA</b> button.
+            Play, pause, change speed, or jump directly to the TCA moment.
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # ------------------------------------------------------------------
-    #  Session‑state başlatıcıları (eğer daha önce tanımlanmadıysa)
-    # ------------------------------------------------------------------
-    if "run_sim" not in st.session_state:
-        st.session_state.run_sim = False
-    if "sim_sat_a" not in st.session_state:
-        st.session_state.sim_sat_a = None
-    if "sim_sat_b" not in st.session_state:
-        st.session_state.sim_sat_b = None
-    if "sim_center_tt" not in st.session_state:
-        st.session_state.sim_center_tt = None
-    if "window_hrs" not in st.session_state:
-        st.session_state.window_hrs = 24
-    if "sel_a" not in st.session_state:
-        st.session_state.sel_a = None
-    if "sel_b" not in st.session_state:
-        st.session_state.sel_b = None
+    # --- SESSION STATE BAŞLATMA ---
+    for key, default in [
+        ("sim_running", False),
+        ("sim_paused", False),
+        ("sim_initialized", False),
+        ("sim_frame_idx", 0),
+        ("sim_max_frames", 0),
+        ("sim_times", None),
+        ("sim_pos_a", None),
+        ("sim_pos_b", None),
+        ("sim_dists", None),
+        ("sim_tca_idx", 0),
+        ("sim_start_real", 0.0),
+        ("sim_speed", 5),
+        ("sim_window_hrs", 6),
+        ("sim_show_orbits", True),
+        ("sim_show_tca", True),
+        ("sim_sel_a_name", None),
+        ("sim_sel_b_name", None),
+    ]:
+        if key not in st.session_state:
+            st.session_state[key] = default
 
-    # ------------------------------------------------------------------
-    #  Uydu seçimi (sidebar yerine burada tutarlı bir UI)
-    # ------------------------------------------------------------------
+    # --- UYDU SEÇİMİ ---
     sat_names = [s.name for s in sats]
     if "my_sat" in st.session_state:
-        sat_names_ext = [st.session_state["my_sat"].name] + sat_names
         all_sats_ext = [st.session_state["my_sat"]] + sats
+        sat_names_ext = [st.session_state["my_sat"].name] + sat_names
     else:
-        sat_names_ext = sat_names
         all_sats_ext = sats
+        sat_names_ext = sat_names
 
-    # Önceki seçimleri tutalım (sayfa yenilenince sıfırlanmasın)
-    default_a = st.session_state.get("sel_a")
-    if default_a and default_a in sat_names_ext:
-        # Valid existing selection
-        pass
-    else:
+    # Önceki seçimleri koru
+    default_a = st.session_state.get("sel_a", sat_names_ext[0] if sat_names_ext else "")
+    default_b = st.session_state.get("sel_b", sat_names_ext[1] if len(sat_names_ext) > 1 else sat_names_ext[0] if sat_names_ext else "")
+    # Geçerli değilse sıfırla
+    if default_a not in sat_names_ext:
         default_a = sat_names_ext[0] if sat_names_ext else ""
-
-    default_b = st.session_state.get("sel_b")
-    if default_b and default_b in sat_names_ext:
-        # Valid existing selection
-        pass
-    else:
+    if default_b not in sat_names_ext:
         default_b = sat_names_ext[1] if len(sat_names_ext) > 1 else sat_names_ext[0] if sat_names_ext else ""
 
-    # ------------------------------------------------------------------
-    #  Profesyonel Kontrol Paneli
-    # ------------------------------------------------------------------
-    st.markdown(
-        """
-        <div style="font-family:'Space Mono',monospace;font-size:.7rem;
+    # --- KONTROL PANELİ ---
+    st.markdown("""<div style="font-family:'Space Mono',monospace;font-size:.7rem;
         letter-spacing:.18em;color:#00d4ff;text-transform:uppercase;
-        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;
-        display:flex; align-items:center; gap:8px;">
-        <span style="background:linear-gradient(135deg, #00d4ff 0%, #00ffa8 100%);
-                     color:#05070a; padding:2px 8px; border-radius:4px; font-weight:700;">🎮</span>
-        SIMULATION CONTROLS</div>""",
-        unsafe_allow_html=True,
-    )
+        border-bottom:1px solid #1e2d42;padding-bottom:6px;margin-bottom:12px;">
+        🎮 SIMULATION CONTROLS</div>""", unsafe_allow_html=True)
 
     with st.container(border=True):
         c1, c2, c3 = st.columns([2, 2, 1])
         with c1:
-            sel_a = st.selectbox(
-                "🛰️ Satellite A",
-                sat_names_ext,
-                index=sat_names_ext.index(default_a) if default_a in sat_names_ext else 0,
-                key="live_sel_a",
-            )
+            sel_a = st.selectbox("🛰️ Satellite A", sat_names_ext,
+                                 index=sat_names_ext.index(default_a),
+                                 key="live_sel_a")
         with c2:
-            sel_b = st.selectbox(
-                "🛰️ Satellite B",
-                sat_names_ext,
-                index=sat_names_ext.index(default_b)
-                if default_b in sat_names_ext
-                else min(1, len(sat_names_ext) - 1),
-                key="live_sel_b",
-            )
+            sel_b = st.selectbox("🛰️ Satellite B", sat_names_ext,
+                                 index=sat_names_ext.index(default_b),
+                                 key="live_sel_b")
         with c3:
-            sim_hrs = st.slider(
-                "⏱️ Window (hours)",
-                1,
-                48,
-                min(st.session_state.get("window_hrs", window_hrs), 48),
-                key="live_window_hrs",
-            )
-            # Ensure sim_hrs is a valid integer
-            if sim_hrs is None:
-                sim_hrs = window_hrs
+            sim_hrs = st.slider("⏱️ Window (hours)", 1, 48, 
+                                value=st.session_state.sim_window_hrs,
+                                key="live_window_hrs")
+        with st.expander("⚙️ Advanced Options", expanded=False):
+            o1, o2 = st.columns(2)
+            with o1:
+                show_orbits = st.checkbox("🔵 Show Orbit Trails", value=st.session_state.sim_show_orbits,
+                                          key="live_show_orbits")
+            with o2:
+                show_tca = st.checkbox("🎯 Show TCA Marker", value=st.session_state.sim_show_tca,
+                                       key="live_show_tca")
+            speed = st.slider("🎬 Speed (x real time)", 1, 20, value=st.session_state.sim_speed,
+                              key="live_anim_speed")
 
-        # Görünüm seçenekleri (expander içinde)
-        with st.expander("⚙️ Advanced Display Options", expanded=False):
-            opt1, opt2 = st.columns(2)
-            with opt1:
-                show_orbits = st.checkbox(
-                    "🔵 Show Orbit Trails",
-                    value=True,
-                    key="live_show_orbits",
-                )
-            with opt2:
-                show_tca = st.checkbox(
-                    "🎯 Show TCA Marker",
-                    value=True,
-                    key="live_show_tca",
-                )
-            # Hız kontrolü (opsiyonel)
-            anim_speed = st.slider(
-                "🎬 Playback Speed",
-                0.5,
-                2.0,
-                1.0,
-                0.1,
-                key="live_anim_speed",
-                help="1.0 = normal speed, 0.5 = two‑times slower, 2.0 = two‑times faster",
-            )
-
-    # ------------------------------------------------------------------
-    #  Profesyonel Başlat / Durdur Butonları
-    # ------------------------------------------------------------------
+    # --- BUTONLAR ---
     btn_col1, btn_col2, btn_col3 = st.columns([1, 1, 2])
     with btn_col1:
-        start_disabled = st.session_state.run_sim or (sel_a == sel_b)
-        if st.button(
-            "🚀 START SIMULATION",
-            disabled=start_disabled,
-            key="live_start_btn",
-            use_container_width=True,
-        ):
+        start_disabled = (st.session_state.sim_running and not st.session_state.sim_paused) or (sel_a == sel_b)
+        if st.button("🚀 START / RESUME", disabled=start_disabled, use_container_width=True, key="live_start_btn"):
             if sel_a == sel_b:
                 st.warning("⚠️ Please select two different satellites.")
             else:
-                sat_obj_a = next(s for s in all_sats_ext if s.name == sel_a)
-                sat_obj_b = next(s for s in all_sats_ext if s.name == sel_b)
-                # Simülasyon kuyruğunu doldur
-                queue_simulation_pair(sat_obj_a, sat_obj_b, None)
-                st.session_state.run_sim = True
-                st.session_state.sel_a = sel_a
-                st.session_state.sel_b = sel_b
-                # Ensure sim_hrs is valid before assignment
-                try:
-                    st.session_state.window_hrs = int(sim_hrs) if sim_hrs is not None else 24
-                except Exception:
-                    st.session_state.window_hrs = 24
-                st.rerun()  # anlık UI güncellemesi
+                # Eğer yeni bir simülasyon ise pozisyonları hesapla
+                if not st.session_state.sim_initialized or \
+                   st.session_state.sim_sel_a_name != sel_a or \
+                   st.session_state.sim_sel_b_name != sel_b or \
+                   st.session_state.sim_window_hrs != sim_hrs:
+                    # Uyduları al
+                    sat_a_obj = next(s for s in all_sats_ext if s.name == sel_a)
+                    sat_b_obj = next(s for s in all_sats_ext if s.name == sel_b)
+                    # Zaman gridi
+                    dt_min = 1  # dakika
+                    n_steps = int(sim_hrs * 60 / dt_min) + 1
+                    sim_start_tt = ts.now().tt
+                    offsets = np.arange(n_steps) * dt_min / 1440.0
+                    times = ts.tt_jd(sim_start_tt + offsets)
+                    jd_arr = np.asarray(times.tt)
+                    # Pozisyonlar
+                    pos_a = sat_a_obj.at(times).position.km
+                    pos_b = sat_b_obj.at(times).position.km
+                    dists = np.linalg.norm(pos_a - pos_b, axis=0)
+                    tca_idx = int(np.nanargmin(dists))
+
+                    # Session state'e kaydet
+                    st.session_state.sim_times = times
+                    st.session_state.sim_pos_a = pos_a
+                    st.session_state.sim_pos_b = pos_b
+                    st.session_state.sim_dists = dists
+                    st.session_state.sim_tca_idx = tca_idx
+                    st.session_state.sim_max_frames = n_steps
+                    st.session_state.sim_sel_a_name = sel_a
+                    st.session_state.sim_sel_b_name = sel_b
+                    st.session_state.sim_window_hrs = sim_hrs
+                    st.session_state.sim_initialized = True
+                    st.session_state.sim_frame_idx = 0
+
+                # Oynatma durumlarını ayarla
+                st.session_state.sim_running = True
+                st.session_state.sim_paused = False
+                st.session_state.sim_start_real = time.time()
+                st.session_state.sim_speed = speed
+                st.session_state.sim_show_orbits = show_orbits
+                st.session_state.sim_show_tca = show_tca
+                st.rerun()
 
     with btn_col2:
-        if st.button(
-            "⏹️ STOP SIMULATION",
-            disabled=not st.session_state.run_sim,
-            key="live_stop_btn",
-            use_container_width=True,
-        ):
-            st.session_state.run_sim = False
+        if st.button("⏸️ PAUSE", disabled=not st.session_state.sim_running or st.session_state.sim_paused,
+                     use_container_width=True, key="live_pause_btn"):
+            st.session_state.sim_paused = True
             st.rerun()
 
     with btn_col3:
-        st.caption(
-            "💡 **Tip:** Use **STOP** to pause the animation, then drag the slider or rotate the view manually."
-        )
-
-    # ------------------------------------------------------------------
-    #  Simülasyon çalışıyorsa animasyonu göster
-    # ------------------------------------------------------------------
-    if st.session_state.get("run_sim", False):
-        # Seçili uydu nesnelerini al (session_state'dan)
-        sa = st.session_state.get("sim_sat_a")
-        sb = st.session_state.get("sim_sat_b")
-
-        # Guard: if satellites are missing despite run_sim=True, reset gracefully
-        if sa is None or sb is None:
-            st.session_state.run_sim = False
-            st.warning("⚠️ Simulation state lost — please press START again.")
+        if st.button("⏹️ STOP", disabled=not st.session_state.sim_initialized,
+                     use_container_width=True, key="live_stop_btn"):
+            st.session_state.sim_running = False
+            st.session_state.sim_paused = False
+            st.session_state.sim_initialized = False
             st.rerun()
 
-        center_tt = st.session_state.get("sim_center_tt")
-        # Ensure window_hrs is valid
-        try:
-            window_hrs = int(st.session_state.get("window_hrs", sim_hrs))
-        except Exception:
-            window_hrs = int(sim_hrs) if sim_hrs is not None else 24
+    # --- ZAMAN ÇİZELGESİ (slider) ---
+    if st.session_state.sim_initialized:
+        n_frames = st.session_state.sim_max_frames
+        frame_slider = st.slider("📏 Timeline", 0, n_frames - 1,
+                                 value=st.session_state.sim_frame_idx,
+                                 key="live_frame_slider",
+                                 disabled=st.session_state.sim_running and not st.session_state.sim_paused)
+        if frame_slider != st.session_state.sim_frame_idx:
+            st.session_state.sim_frame_idx = frame_slider
+            # Otomatik oynatmayı durdur
+            if st.session_state.sim_running:
+                st.session_state.sim_paused = True
+            st.rerun()
 
-        # Compute frame duration from speed slider BEFORE building the figure
-        frame_duration_ms = max(20, int(60 / anim_speed))  # 60 ms base at 1x speed
+    # --- TCA'YA ATLA ---
+    if st.session_state.sim_initialized:
+        if st.button("⏮️ Jump to TCA", use_container_width=True, key="live_tca_btn"):
+            st.session_state.sim_frame_idx = st.session_state.sim_tca_idx
+            if st.session_state.sim_running:
+                st.session_state.sim_paused = True
+            st.rerun()
 
-        with st.spinner("Preparing animation …"):
-            # Use the main fig_animated_conjunction function which is already cached
-            anim_fig, tca_i, tca_d, dists_arr, jd_arr, tca_tt = fig_animated_conjunction(
-                sa,
-                sb,
-                window_hrs=window_hrs,
-                show_orbits=show_orbits,
-                show_tca=show_tca,
-                center_tt=center_tt,
-                frame_duration=frame_duration_ms,
-            )
+    # --- ANİMASYON / GÖRÜNTÜLEME ---
+    if st.session_state.sim_initialized and st.session_state.sim_running and not st.session_state.sim_paused:
+        # Otomatik ilerleme: geçen gerçek zamana göre kareyi hesapla
+        elapsed = time.time() - st.session_state.sim_start_real
+        frames_to_advance = int(elapsed * st.session_state.sim_speed / 60)  # 1 frame = 1 dakika
+        new_idx = min(st.session_state.sim_frame_idx + frames_to_advance, st.session_state.sim_max_frames - 1)
+        if new_idx != st.session_state.sim_frame_idx:
+            st.session_state.sim_frame_idx = new_idx
+            st.session_state.sim_start_real += frames_to_advance * 60 / st.session_state.sim_speed  # gerçek zamanı kaydır
+        # Belirli bir kareyi göster ve sonra rerun ile devam et
+        # (aşağıdaki çizim kısmına geç)
 
-        # --------------------------------------------------------------
-        #  TCA özet metrikleri
-        # --------------------------------------------------------------
-        if ts is not None:
-            tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+    # --- ÇİZİM ---
+    if st.session_state.sim_initialized:
+        pos_a = st.session_state.sim_pos_a
+        pos_b = st.session_state.sim_pos_b
+        dists = st.session_state.sim_dists
+        tca_idx = st.session_state.sim_tca_idx
+        times = st.session_state.sim_times
+        jd_arr = np.asarray(times.tt)
+        i = st.session_state.sim_frame_idx
+
+        # Şu anki pozisyonlar
+        pa = pos_a[:, i]
+        pb = pos_b[:, i]
+        dist_now = dists[i]
+        t_now_tt = jd_arr[i]
+
+        # TCA metrikleri
+        tca_dist = dists[tca_idx]
+        tca_tt = jd_arr[tca_idx]
+
+        # --- 3D Figür Oluştur ---
+        fig = go.Figure()
+
+        # Dünya (statik, önbellekten)
+        earth = load_earth_texture(style='night')
+        if earth:
+            x, y, z, sc, cs = earth
+            fig.add_trace(go.Surface(x=x, y=y, z=z, surfacecolor=sc, colorscale=cs,
+                                     showscale=False, hoverinfo='skip'))
         else:
-            tca_utc = "Unknown (timescale error)"
-        sev_sim, col_sim = risk_level(
-            collision_probability_isotropic(tca_d, sigma_km, hbr_km)
-        )
-        tca_tplus_min = int(round((tca_tt - jd_arr[0]) * 1440))
+            r = EARTH_RADIUS_KM
+            u, v = np.mgrid[0:2 * np.pi:40j, 0:np.pi:20j]
+            fig.add_trace(go.Surface(x=r * np.cos(u) * np.sin(v),
+                                     y=r * np.sin(u) * np.sin(v),
+                                     z=r * np.cos(v),
+                                     colorscale="Blues", opacity=0.5, showscale=False))
 
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
-            st.metric("TCA Time (UTC)", tca_utc)
-        with m2:
-            st.metric("Min. Distance (km)", f"{tca_d:.3f}")
-        with m3:
-            st.metric("TCA T+ (min)", tca_tplus_min)
-        with m4:
-            st.metric("Risk", sev_sim)
+        # Yörünge izleri (isteğe bağlı)
+        if st.session_state.sim_show_orbits:
+            # 96 dakikalık iz
+            orb_off = np.linspace(0, 96, 72) / 1440.0
+            orb_times = ts.tt_jd(jd_arr[0] + orb_off)
+            try:
+                orb_a = st.session_state.get("sim_sat_a_obj").at(orb_times).position.km
+                orb_b = st.session_state.get("sim_sat_b_obj").at(orb_times).position.km
+            except:
+                orb_a = orb_b = np.full((3, 72), np.nan)
+            if not np.all(np.isnan(orb_a)):
+                fig.add_trace(go.Scatter3d(x=orb_a[0], y=orb_a[1], z=orb_a[2],
+                                           mode='lines', line=dict(color='rgba(0,200,255,0.3)', width=2),
+                                           hoverinfo='skip', showlegend=False))
+            if not np.all(np.isnan(orb_b)):
+                fig.add_trace(go.Scatter3d(x=orb_b[0], y=orb_b[1], z=orb_b[2],
+                                           mode='lines', line=dict(color='rgba(255,107,0,0.3)', width=2),
+                                           hoverinfo='skip', showlegend=False))
 
-        # --------------------------------------------------------------
-        #  3D animasyon
-        # --------------------------------------------------------------
-        st.info(
-            "💡 **Camera Control:** Camera rotation is only available when the animation is paused. Use **STOP** or the slider to pause, then rotate the view manually."
-        )
-        # Plotly’nin `frame.duration` parametresi milisaniye olduğundan:
-        st.plotly_chart(
-            anim_fig,
-            use_container_width=True,
-            key="live_anim_3d",
-            config={"scrollZoom": False, "displayModeBar": False},
-        )
+        # Uyduların anlık pozisyonları
+        fig.add_trace(go.Scatter3d(x=[pa[0]], y=[pa[1]], z=[pa[2]],
+                                   mode='markers', marker=dict(color='#00c8ff', size=12, symbol='diamond'),
+                                   name=sel_a))
+        fig.add_trace(go.Scatter3d(x=[pb[0]], y=[pb[1]], z=[pb[2]],
+                                   mode='markers', marker=dict(color='#ff6b00', size=12, symbol='circle'),
+                                   name=sel_b))
 
-        # --------------------------------------------------------------
-        #  Distance profile (statistik)
-        # --------------------------------------------------------------
-        st.markdown("**📊 Distance Profile (Full Window)**")
-        t_ax = (jd_arr - jd_arr[0]) * 24.0
-        fig_dp_sim = go.Figure()
-        fig_dp_sim.add_hline(
-            y=hbr_km,
-            line=dict(color="#ff2b4d", dash="dot", width=1),
-            annotation_text=f"HBR ({hbr_km * 1000:.0f} m)",
-        )
-        fig_dp_sim.add_trace(
-            go.Scatter(
-                x=t_ax,
-                y=dists_arr,
-                mode="lines",
-                line=dict(color="#00c8ff", width=1.5),
-                fill="tozeroy",
-                fillcolor="rgba(0,200,255,.04)",
-                name="Distance (km)",
-            )
-        )
-        dists_profile = np.asarray(dists_arr, dtype=float)
-        if len(dists_profile) and not np.all(np.isnan(dists_profile)):
-            tca_profile_idx = int(np.nanargmin(dists_profile))
-            fig_dp_sim.add_trace(
-                go.Scatter(
-                    x=[t_ax[tca_profile_idx]],
-                    y=[dists_profile[tca_profile_idx]],
-                    mode="markers+text",
-                    marker=dict(color="#ff2b4d", size=10),
-                    text=[f" TCA {dists_profile[tca_profile_idx]:.1f} km"],
-                    textfont=dict(size=9, color="#ff2b4d", family="Space Mono"),
-                    name="TCA",
-                )
-            )
-        fig_dp_sim.update_layout(
+        # Aralarındaki çizgi (mesafeye göre renk)
+        if dist_now < 50:
+            line_color = '#ff2b4d'
+        elif dist_now < 200:
+            line_color = '#ffaa00'
+        else:
+            line_color = 'rgba(200,220,255,0.6)'
+        fig.add_trace(go.Scatter3d(x=[pa[0], pb[0]], y=[pa[1], pb[1]], z=[pa[2], pb[2]],
+                                   mode='lines', line=dict(color=line_color, width=4, dash='dot'),
+                                   hoverinfo='skip', showlegend=False))
+
+        # TCA işaretçisi (isteğe bağlı)
+        if st.session_state.sim_show_tca:
+            mid_tca = (pos_a[:, tca_idx] + pos_b[:, tca_idx]) / 2
+            ring_radius = max(120, min(800, tca_dist * 1.6))
+            # Basit bir daire
+            theta = np.linspace(0, 2 * np.pi, 60)
+            normal = mid_tca / np.linalg.norm(mid_tca) if np.linalg.norm(mid_tca) > 0 else np.array([0, 0, 1])
+            basis_a = np.cross(normal, np.array([0, 0, 1]))
+            if np.linalg.norm(basis_a) < 1e-6:
+                basis_a = np.cross(normal, np.array([0, 1, 0]))
+            basis_a /= np.linalg.norm(basis_a)
+            basis_b = np.cross(normal, basis_a)
+            ring = (mid_tca[:, None] +
+                    ring_radius * np.cos(theta)[None, :] * basis_a[:, None] +
+                    ring_radius * np.sin(theta)[None, :] * basis_b[:, None])
+            fig.add_trace(go.Scatter3d(x=ring[0], y=ring[1], z=ring[2],
+                                       mode='lines', line=dict(color='rgba(255,43,77,0.5)', width=3),
+                                       hoverinfo='skip', showlegend=False))
+
+        # Başlık
+        t_utc = ts.tt_jd(t_now_tt).utc_strftime("%H:%M UTC")
+        title_text = (f"{sel_a} × {sel_b}<br>"
+                      f"<sup>⏱ T+{i} min | {t_utc} | Δ = {dist_now:.1f} km</sup>")
+        if i == tca_idx:
+            title_text += " <span style='color:#ff2b4d;'>⚠ TCA</span>"
+
+        fig.update_layout(
             **DARK,
-            height=240,
-            xaxis=dict(title="Time (hours)", gridcolor="#1a2740", zeroline=False),
-            yaxis=dict(title="Distance (km)", gridcolor="#1a2740", zeroline=False),
-            title=dict(
-                text=f"Distance Profile — {sa.name} × {sb.name}",
-                font=dict(size=11, family="Barlow Condensed", color="#00c8ff"),
-                x=0.01,
-            ),
-            margin=dict(l=10, r=10, t=35, b=10),
-            legend=dict(font=dict(size=9), bgcolor="rgba(0,0,0,0)"),
-        )
-        st.plotly_chart(
-            fig_dp_sim,
-            use_container_width=True,
-            key="live_dist_profile",
-            config={"scrollZoom": False, "displayModeBar": False},
+            height=600,
+            title=dict(text=title_text, font=dict(size=14), x=0.01),
+            scene=dict(aspectmode='cube',
+                       camera=dict(eye=dict(x=1.8, y=1.8, z=0.8))),
+            margin=dict(l=0, r=0, t=60, b=0),
+            showlegend=True,
+            legend=dict(x=0.01, y=0.95)
         )
 
+        plot_placeholder = st.empty()
+        plot_placeholder.plotly_chart(fig, use_container_width=True,
+                                      config={'scrollZoom': not (st.session_state.sim_running and not st.session_state.sim_paused),
+                                              'displayModeBar': False})
+
+        # --- TCA ÖZETİ ---
+        m1, m2, m3, m4 = st.columns(4)
+        tca_utc = ts.tt_jd(tca_tt).utc_strftime("%Y-%m-%d %H:%M:%S UTC")
+        sev_sim, _ = risk_level(collision_probability_isotropic(tca_dist, sigma_km, hbr_km))
+        tca_tplus = int(round((tca_tt - jd_arr[0]) * 1440))
+        m1.metric("TCA Time (UTC)", tca_utc)
+        m2.metric("Min. Distance (km)", f"{tca_dist:.3f}")
+        m3.metric("TCA T+ (min)", tca_tplus)
+        m4.metric("Risk", sev_sim)
+
+        # --- MESAFE PROFİLİ ---
+        st.markdown("**📊 Distance Profile**")
+        t_ax = (jd_arr - jd_arr[0]) * 24.0
+        fig_dp = go.Figure()
+        fig_dp.add_hline(y=hbr_km, line=dict(color='#ff2b4d', dash='dot'),
+                         annotation_text=f"HBR ({hbr_km*1000:.0f} m)")
+        fig_dp.add_trace(go.Scatter(x=t_ax, y=dists,
+                                    mode='lines', line=dict(color='#00c8ff', width=1.5),
+                                    fill='tozeroy', fillcolor='rgba(0,200,255,0.04)'))
+        # TCA noktası
+        fig_dp.add_trace(go.Scatter(x=[t_ax[tca_idx]], y=[tca_dist],
+                                    mode='markers+text',
+                                    marker=dict(color='#ff2b4d', size=10),
+                                    text=[f"TCA {tca_dist:.1f} km"],
+                                    textfont=dict(size=9, color='#ff2b4d'), showlegend=False))
+        # Şu anki pozisyonu da işaretleyelim
+        fig_dp.add_vline(x=t_ax[i], line=dict(color='yellow', width=1, dash='dot'),
+                         annotation_text=f"Now ({dist_now:.1f} km)", 
+                         annotation_font=dict(size=9, color='yellow'))
+
+        fig_dp.update_layout(
+            **DARK,
+            height=250,
+            xaxis=dict(title="Time (hours)", gridcolor='#1a2740'),
+            yaxis=dict(title="Distance (km)", gridcolor='#1a2740'),
+            margin=dict(l=10, r=10, t=30, b=10)
+        )
+        st.plotly_chart(fig_dp, use_container_width=True, config={'scrollZoom': False})
+
+        # --- OTOMATİK İLERLEME İÇİN RERUN ---
+        if st.session_state.sim_running and not st.session_state.sim_paused:
+            # Bir sonraki kareyi hemen göstermek yerine belirli bir gecikme sonra rerun
+            time.sleep(0.05)  # 50 ms → saniyede yaklaşık 20 frame
+            st.rerun()
+    else:
+        st.info("👆 Select two satellites and press START to begin the real‑time encounter visualization.")
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
