@@ -817,28 +817,20 @@ header[data-testid="stHeader"]{display:none !important;}
 # ================================================================================
 #  EARTH VIEW - ENHANCED WITH ERROR HANDLING
 # ================================================================================
-@st.cache_data(show_spinner=False, ttl=3600)  # Cache for 1 hour
+@st.cache_data(show_spinner=False, ttl=3600)
 def load_earth_texture(resolution: int = 360, style: str = "night"):
-    """
-    Loads high-resolution NASA Earth textures and optimizes them for Plotly Surface rendering.
-    style: "night" (Night Lights), "realistic" (Realistic Blue Marble), "futuristic" (Blue/Cyan Tonal)
-    Enhanced with better error handling and performance optimization.
-    """
     try:
         if style == "night":
-            # NASA Black Marble (Night Lights) - Optimal for dark theme
             urls = [
                 "https://eoimages.gsfc.nasa.gov/images/imagerecords/79000/79765/dnb_land_ocean_ice.2012.3600x1800.jpg",
                 "https://upload.wikimedia.org/wikipedia/commons/b/ba/The_earth_at_night.jpg",
             ]
         elif style == "realistic":
-            # NASA Blue Marble Next Generation (High-Resolution Realistic)
             urls = [
                 "https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73909/world.topo.bathy.200412.3x5400x2700.jpg",
                 "https://upload.wikimedia.org/wikipedia/commons/a/ad/Blue_Marble_2002.png",
             ]
         else:
-            # Optimized version of the futuristic theme
             urls = [
                 "https://upload.wikimedia.org/wikipedia/commons/c/cd/Land_ocean_ice_2048.jpg/1024px-Land_ocean_ice_2048.jpg"
             ]
@@ -849,17 +841,12 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
             try:
                 resp = requests.get(url, headers=headers, timeout=30)
                 resp.raise_for_status()
-
                 img = Image.open(BytesIO(resp.content)).convert("RGB")
                 W, H = resolution * 2, resolution
-
-                # LANCZOS filter minimizes pixelation during resampling
                 img = img.resize((W, H), Image.LANCZOS)
-
                 img_array = np.array(img, dtype=np.float32)
 
                 if style == "futuristic":
-                    # Futuristic blue/cyan color processing
                     img_array = img_array * 0.4
                     img_array[:, :, 2] = np.clip(img_array[:, :, 2] * 1.4, 0, 255)
                     img_array[:, :, 1] = np.clip(img_array[:, :, 1] * 1.1, 0, 255)
@@ -867,51 +854,41 @@ def load_earth_texture(resolution: int = 360, style: str = "night"):
                     img_array = np.clip((img_array - mean_val) * 1.3 + mean_val, 0, 255)
                     img_array = np.clip(img_array + 15, 0, 255)
                 elif style == "night":
-                    # Slightly enhance city lights, render oceans as pure black
                     img_array = np.clip(img_array * 1.3, 0, 255)
 
                 img_array = img_array.astype(np.uint8)
                 img = Image.fromarray(img_array)
-
-                # MEDIANCUT algorithm prevents color muddying under 256-color limit
                 imgq = img.quantize(colors=256, method=Image.MEDIANCUT)
                 pal = np.array(imgq.getpalette(), dtype=np.uint8).reshape(-1, 3)[:256]
-
                 idx = np.flipud(np.array(imgq, dtype=float))
                 surf_color = idx / 255.0
                 colorscale = [
                     [i / 255.0, f"rgb({pal[i, 0]},{pal[i, 1]},{pal[i, 2]})"]
                     for i in range(256)
                 ]
-
                 lat = np.linspace(np.pi / 2, -np.pi / 2, H)
                 lon = np.linspace(-np.pi, np.pi, W)
                 lon_g, lat_g = np.meshgrid(lon, lat)
-
                 R = EARTH_RADIUS_KM
                 x = R * np.cos(lat_g) * np.cos(lon_g)
                 y = R * np.cos(lat_g) * np.sin(lon_g)
                 z = R * np.sin(lat_g)
+                return x, y, z, surf_color, colorscale
+            except Exception:
+                continue
 
-                        return x, y, z, surf_color, colorscale
-    except Exception:
-        continue
+        # Hiçbir URL çalışmadı → yedek mavi küre
+        lat = np.linspace(np.pi / 2, -np.pi / 2, 100)
+        lon = np.linspace(-np.pi, np.pi, 200)
+        lon_g, lat_g = np.meshgrid(lon, lat)
+        R = EARTH_RADIUS_KM
+        x = R * np.cos(lat_g) * np.cos(lon_g)
+        y = R * np.cos(lat_g) * np.sin(lon_g)
+        z = R * np.sin(lat_g)
+        surf_color = np.ones_like(lat_g) * 0.5
+        colorscale = [[0, 'rgb(10,20,40)'], [1, 'rgb(30,60,120)']]
+        return x, y, z, surf_color, colorscale
 
-# Eğer hiçbir URL çalışmazsa, basit bir mavi küre döndür.
-# Bu kısmı return None'u kaldırıp şu şekilde değiştir:
-lat = np.linspace(np.pi/2, -np.pi/2, 100)
-lon = np.linspace(-np.pi, np.pi, 200)
-lon_g, lat_g = np.meshgrid(lon, lat)
-R = EARTH_RADIUS_KM
-x = R * np.cos(lat_g) * np.cos(lon_g)
-y = R * np.cos(lat_g) * np.sin(lon_g)
-z = R * np.sin(lat_g)
-# Tek renk mavi bir yüzey rengi oluştur
-surf_color = np.ones_like(lat_g) * 0.5
-colorscale = [[0, 'rgb(10,20,40)'], [1, 'rgb(30,60,120)']]
-return x, y, z, surf_color, colorscale
-
-        return None
     except Exception as e:
         print(f"Earth texture load failed: {str(e)[:50]}")
         return None
