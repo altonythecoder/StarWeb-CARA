@@ -67,12 +67,12 @@ If a collision occurs, its severity matters. The system calculates $E_c$ (J/g). 
 ## 💻 Installation & Usage
 
 ### Prerequisites
-* Python 3.9+
-* Git
+* `Python 3.9+`
+* `Git`
 * [Space-Track.org](https://www.space-track.org) Account
 
 ### Setup
-
+```bash
 # 1. Clone
 git clone [https://github.com/altonythecoder/StarWeb-CARA.git](https://github.com/altonythecoder/StarWeb-CARA.git)
 cd StarWeb-CARA
@@ -81,7 +81,6 @@ cd StarWeb-CARA
 python -m venv venv
 # Windows:
 venv\Scripts\activate
-
 # Mac/Linux:
 source venv/bin/activate
 
@@ -89,5 +88,4 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 4. Launch
-streamlit run starweb-cara.pym/altonythecoder/StarWeb-CARA.git](https://github.com/altonythecoder/StarWeb-CARA.git)
-cd StarWeb-CARA
+streamlit run starweb-cara.py
