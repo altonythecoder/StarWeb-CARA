@@ -1,5 +1,5 @@
 # StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
-# Altay ÇAVUŞ — Space Sciences and Technologies, 2026
+# Altay ÇAVUŞ — Space Sciences and Technologies, 2026 - Finished 07/12/2026
 
 import math
 import time
