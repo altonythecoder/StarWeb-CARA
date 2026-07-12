@@ -3813,85 +3813,160 @@ with tab4:
 
 # ── TAB 5: 3D ORBIT & GROUND TRACK ───────────────────────────────────────────
 with tab5:
-    # Include user-defined satellite (if available) in visualization list
+    # Uydu listesi (kullanıcı tanımlı varsa başa ekle)
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
-        # Insert at beginning to ensure first color (light blue) and prominence in plot
         display_sats.insert(0, st.session_state["my_sat"])
 
-    c1_3d, c2_3d = st.columns([3, 2])
-    with c1_3d:
-        st.markdown("**3D Orbit View**")
-        with st.spinner("Loading Earth texture..."):
+    col_3d, col_gnd = st.columns([3, 2], gap="medium")
+
+    with col_3d:
+        st.markdown("**🛰️ 3D Orbit View**")
+        with st.spinner("🌀 Loading Earth texture and propagating orbits…"):
+            fig_3d = fig_3d_orbits(display_sats)
             st.plotly_chart(
-                fig_3d_orbits(display_sats),
+                fig_3d,
                 use_container_width=True,
-                height=560,
-                key="3d_orbit_tab5",
+                config={'scrollZoom': True, 'displayModeBar': False},
+                key="3d_orbit_tab5_v2"
             )
-    with c2_3d:
-        st.markdown("**Ground Track Map**")
-        with st.spinner("Calculating..."):
+
+    with col_gnd:
+        st.markdown("**📍 Ground Track Map**")
+        with st.spinner("🌐 Computing ground tracks…"):
+            fig_gt = fig_ground_tracks(display_sats)
             st.plotly_chart(
-                fig_ground_tracks(display_sats),
+                fig_gt,
                 use_container_width=True,
-                key="ground_track_tab5",
+                config={'scrollZoom': True, 'displayModeBar': False},
+                key="ground_track_tab5_v2"
             )
+
+        # Açıklama paneli – tema renkleriyle uyumlu
         st.markdown(
-            """<div style="font-family:'Space Mono',monospace; font-size:.65rem;
-             color:#2a4060; line-height:2; margin-top:8px;">
-          Approximately 95-minute track shown for each satellite.<br>
-          Large dots represent current position.<br>
-          Ground track calculated with SGP4/SDP4 propagator.
-        </div>""",
+            f"""<div style="font-family:'Space Mono',monospace; font-size:.65rem;
+            color:{'#4a6880' if st.session_state.theme=='dark' else '#6c757d'};
+            line-height:2; margin-top:12px; padding:12px;
+            background:{'rgba(10,15,24,.6)' if st.session_state.theme=='dark' else '#f8f9fa'};
+            border:1px solid {'#1e2d42' if st.session_state.theme=='dark' else '#dee2e6'};
+            border-radius:6px;">
+            <span style="color:#00c8ff;">●</span> 95‑minute orbital paths shown.<br>
+            <span style="color:#00ffa8;">●</span> Large markers indicate current positions.<br>
+            <span style="color:#ffaa00;">●</span> Propagated with SGP4/SDP4.
+            </div>""",
             unsafe_allow_html=True,
         )
 
 # ── TAB 6: ORBITAL ELEMENTS ────────────────────────────────────────────────
 with tab6:
-    st.markdown("## Orbital Elements and Space Distribution")
+    st.markdown("## 📊 Orbital Elements & Space Distribution")
+    st.caption("Keplerian elements and visual distribution of the fleet.")
 
-    # Include user-defined satellite in radar and table lists as well
+    # Uydu listesi
     display_sats = sats.copy()
     if "my_sat" in st.session_state:
         display_sats.insert(0, st.session_state["my_sat"])
 
     elems_list = [(sat.name, get_orbital_elements(sat)) for sat in display_sats]
 
-    col_a, col_b = st.columns([2, 3])
-    with col_a:
-        st.markdown("**Kepler Orbital Elements Table**")
+    # Üst bölüm: Radar grafik + Tablo yan yana
+    left_col, right_col = st.columns([1, 2], gap="medium")
+
+    with left_col:
+        st.markdown("**🪐 Altitude vs Inclination**")
+        st.caption("Bubble size ∝ eccentricity")
+        fig_radar = fig_orbital_elements_radar(elems_list)
+        st.plotly_chart(
+            fig_radar,
+            use_container_width=True,
+            config={'displayModeBar': False},
+            key="radar_tab6_v2"
+        )
+
+    with right_col:
+        st.markdown("**🛸 Fleet Orbital Table**")
         rows = []
         for name, elems in elems_list:
             if elems:
-                rows.append(
-                    {
-                        "Satellite": name[:18],
-                        "Altitude (km)": elems.get("Mean Altitude (km)", "-"),
-                        "Inclination (°)": elems.get("Inclination i (°)", "-"),
-                        "Eccentricity": elems.get("Eccentricity e", "-"),
-                        "Period (min)": elems.get("Orbital Period (min)", "-"),
-                    }
+                rows.append({
+                    "Satellite": name[:20],
+                    "Alt (km)": elems.get("Mean Altitude (km)", "—"),
+                    "Inc (°)": elems.get("Inclination i (°)", "—"),
+                    "e": elems.get("Eccentricity e", "—"),
+                    "Period (min)": elems.get("Orbital Period (min)", "—")
+                })
+        if rows:
+            df_elems = pd.DataFrame(rows)
+            # Tema uyumlu tablo stili
+            styled_df = (
+                df_elems.style
+                .set_properties(
+                    subset=["Satellite"],
+                    **{'font-family': 'Space Mono, monospace',
+                       'color': '#00c8ff' if st.session_state.theme == 'dark' else '#0066cc',
+                       'font-weight': '600'}
                 )
-            if rows:
-                df_elems = pd.DataFrame(rows)
-                st.dataframe(df_elems, use_container_width=True, hide_index=True)
-    with col_b:
-        st.markdown("**Altitude / Inclination Distribution** (dot size = eccentricity)")
-        st.plotly_chart(
-            fig_orbital_elements_radar(elems_list),
-            use_container_width=True,
-            key="radar_tab6",
-        )
+                .set_properties(
+                    subset=["Alt (km)", "Inc (°)", "e", "Period (min)"],
+                    **{'font-family': 'Space Mono, monospace',
+                       'color': '#b8cfe0' if st.session_state.theme == 'dark' else '#212529'}
+                )
+                .set_table_styles([
+                    {'selector': 'th',
+                     'props': [('font-family', 'Barlow Condensed, sans-serif'),
+                               ('font-weight', '700'),
+                               ('color', '#00d4ff' if st.session_state.theme == 'dark' else '#0066cc'),
+                               ('text-transform', 'uppercase'),
+                               ('letter-spacing', '0.08em')]},
+                    {'selector': 'td',
+                     'props': [('padding', '8px 12px')]},
+                ])
+            )
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No orbital elements could be extracted.")
 
-    with st.expander("Selected Satellite Detail"):
-        sel_sat = st.selectbox(
-            "Select satellite", [s.name for s in display_sats], key="elem_sel"
+    st.markdown("---")
+
+    # Alt bölüm: Tek uydu detayı
+    with st.expander("🔬 Detailed View of Selected Satellite", expanded=False):
+        sel_sat_name = st.selectbox(
+            "Select satellite",
+            [name for name, _ in elems_list],
+            key="elem_detail_v2"
         )
-        sel_elems = next((e for n, e in elems_list if n == sel_sat), {})
-        if sel_elems:
-            df_single = pd.DataFrame(sel_elems.items(), columns=["Element", "Value"])
-            st.dataframe(df_single, use_container_width=True, hide_index=True)
+        if sel_sat_name:
+            sel_elems = next((e for n, e in elems_list if n == sel_sat_name), {})
+            if sel_elems:
+                # İki sütunlu kart görünümü
+                detail_a, detail_b = st.columns(2)
+                with detail_a:
+                    st.markdown(f"""
+                    **Semi‑major axis** : `{sel_elems.get('Semi-major Axis a (km)', '—')} km`  
+                    **Mean Altitude** : `{sel_elems.get('Mean Altitude (km)', '—')} km`  
+                    **Eccentricity** : `{sel_elems.get('Eccentricity e', '—')}`  
+                    **Inclination** : `{sel_elems.get('Inclination i (°)', '—')}°`
+                    """)
+                with detail_b:
+                    st.markdown(f"""
+                    **RAAN** : `{sel_elems.get('RAAN (°)', '—')}°`  
+                    **Arg. of Perigee** : `{sel_elems.get('Arg of Perigee ω (°)', '—')}°`  
+                    **Mean Anomaly** : `{sel_elems.get('Mean Anomaly M (°)', '—')}°`  
+                    **Orbital Period** : `{sel_elems.get('Orbital Period (min)', '—')} min`  
+                    **Mean Motion** : `{sel_elems.get('Mean Motion n (rev/min)', '—')} rev/min`
+                    """)
+            else:
+                st.warning("Orbital elements not available for this satellite.")
+
+    # Dipnot
+    st.markdown(
+        f"""<div style="font-family:'Space Mono',monospace;font-size:.65rem;
+        color:{'#4a6880' if st.session_state.theme=='dark' else '#6c757d'};
+        text-align:right; margin-top:24px;">
+        Elements extracted from TLE at epoch · SGP4/SDP4 propagator
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 # ── TAB 7: METHODOLOGY ────────────────────────────────────────────────────────
 with tab7:
