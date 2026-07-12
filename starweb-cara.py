@@ -236,10 +236,36 @@ def sync_mass_defaults(group_key: str):
 #  CSS — ENHANCED MISSION CONTROL DARK THEME WITH THEME SELECTOR
 # ================================================================================
 def get_theme_css(theme="dark"):
-    """Generate CSS based on selected theme"""
+    # Bu sabit CSS'i her iki temada da kullanacağız
+    password_fix_css = """
+    button[aria-label*="visibility"] span,
+    button[aria-label*="show"] span,
+    button[aria-label*="hide"] span {
+        display: none !important;
+        font-size: 0 !important;
+    }
+    button[aria-label*="visibility"]::before,
+    button[aria-label*="show"]::before,
+    button[aria-label*="hide"]::before {
+        content: "👁";
+        font-size: 14px;
+    }
+    """
+    
     if theme == "light":
-        # Light/Professional Theme (Black & White with blue accents)
-        return """
+        return f"""
+        <style>
+        ... (mevcut CSS)
+        {password_fix_css}
+        </style>
+        """
+    else:
+        return f"""
+        <style>
+        ... (mevcut CSS)
+        {password_fix_css}
+        </style>
+        """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -482,6 +508,15 @@ header[data-testid="stHeader"]{display:none !important;}
     else:
         # Original Dark Mission Control Theme
         return """
+        
+/* Fix password visibility icon */
+button[aria-label="Toggle password visibility"] svg {
+    display: inline !important;
+}
+button[aria-label="Toggle password visibility"] * {
+    font-family: 'Material Icons' !important;
+}
+        
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -1599,14 +1634,46 @@ ENHANCED_COLORS = [
     "#ff9060",  # Coral
 ]
 
+@st.cache_resource(show_spinner=False)
+def generate_earth_sphere(resolution: int = 50):
+    """Generate perfect sphere coordinates for Earth rendering."""
+    R = EARTH_RADIUS_KM
+    lat = np.linspace(90, -90, resolution)
+    lon = np.linspace(-180, 180, resolution * 2)
+    lon_grid, lat_grid = np.meshgrid(lon, lat)
+    lat_rad = np.radians(lat_grid)
+    lon_rad = np.radians(lon_grid)
+    x = R * np.cos(lat_rad) * np.cos(lon_rad)
+    y = R * np.cos(lat_rad) * np.sin(lon_rad)
+    z = R * np.sin(lat_rad)
+    return x, y, z, lat_grid, lon_grid
+
+
+def create_earth_trace(style: str = "night", resolution: int = 50):
+    """Create Earth surface trace with proper rendering."""
+    result = load_earth_texture(resolution, style)
+    if result is None:
+        x, y, z, _, _ = generate_earth_sphere(resolution)
+        return go.Surface(
+            x=x, y=y, z=z,
+            colorscale=[[0, "#1a3a5c"], [0.5, "#2a5a8c"], [1, "#1a3a5c"]],
+            opacity=0.95, showscale=False, hoverinfo="skip"
+        )
+    x, y, z, surf_color, colorscale = result
+    return go.Surface(
+        x=x, y=y, z=z,
+        surfacecolor=surf_color,
+        colorscale=colorscale,
+        opacity=0.95, showscale=False, hoverinfo="skip"
+    )
 
 def fig_3d_orbits(sats):
-    """
-    Enhanced 3D orbit visualization with improved visual effects and performance.
-    Fixed syntax error: lighting dict now properly closed with ) instead of }
-    """
     now = ts.now()
     fig = go.Figure()
+
+    # === DÜNYA: YENİ HALİ ===
+    earth_trace = create_earth_trace("night", resolution=50)
+    fig.add_trace(earth_trace)
 
     # Load Earth texture with enhanced styling
     earth = load_earth_texture(resolution=180, style="night")
@@ -3011,7 +3078,6 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
 
 # ── TAB 1: DASHBOARD ───────────────────────────────────────────────────
 with tab1:
-    with tab1:
     # Parametreler değiştiyse veya ilk çalıştırmaysa yeniden hesapla
     current_params = (window_hrs, sigma_km, hbr_km, mass_a_kg, mass_b_kg, st.session_state.theme)
     if "conj_df" not in st.session_state or st.session_state.get("conj_params") != current_params:
