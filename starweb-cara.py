@@ -1,5 +1,5 @@
 # StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
-# Altay ÇAVUŞ — Space Sciences and Technologies, 2026 - Finished 07/12/2026
+# Altay ÇAVUŞ — Space Sciences and Technologies, 2026
 
 import math
 import time
@@ -767,17 +767,17 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs=6, show_orbits=True, show_
         t_utc = ts.tt_jd(anim_jd[i]).utc_strftime("%H:%M UTC")
         t_min = (i - tca_idx) * step_min
         time_lbl = f"T+{t_min}" if t_min >= 0 else f"T{t_min}"
-        warn_tag = "<span style='color:#ff2b4d;'> ⚠ TCA ANIDIR</span>" if i == tca_idx else ""
-        title_txt = f"<b>{sat_a.name} × {sat_b.name}</b> <br><sup style='color:#b8cfe0;'>⏱ {time_lbl} min &nbsp;|&nbsp; {t_utc} &nbsp;|&nbsp; Mesafe: {dists[i]:.1f} km{warn_tag}</sup>"
+        warn_tag = "<span style='color:#ff2b4d;'> ⚠ TCA APPROACHING</span>" if i == tca_idx else ""
+        title_txt = f"<b>{sat_a.name} × {sat_b.name}</b> <br><sup style='color:#b8cfe0;'>⏱ {time_lbl} min &nbsp;|&nbsp; {t_utc} &nbsp;|&nbsp; Distance: {dists[i]:.1f} km{warn_tag}</sup>"
         frames.append(go.Frame(data=make_dynamic_traces(i), traces=dyn_indices, name=str(i), layout=go.Layout(title_text=title_txt)))
         lbl = t_utc if i % max(1, n_frames // 20) == 0 else ""
-        # 0 Transition optimizasyonu: WebGL kasmasını engeller!
+        # 0 Transition optimization: Prevents WebGL lag!
         slider_steps.append(dict(args=[[str(i)], dict(frame=dict(duration=0, redraw=True), transition=dict(duration=0), mode="immediate")], label=lbl, method="animate"))
 
     fig.frames = frames
     base_t_utc = ts.tt_jd(anim_jd[0]).utc_strftime("%H:%M UTC")
     base_t_min = (0 - tca_idx) * step_min
-    base_title = f"<b>{sat_a.name} × {sat_b.name}</b> <br><sup style='color:#b8cfe0;'>⏱ {'T+' if base_t_min >= 0 else 'T'}{base_t_min} min &nbsp;|&nbsp; {base_t_utc} &nbsp;|&nbsp; Mesafe: {dists[0]:.1f} km</sup>"
+    base_title = f"<b>{sat_a.name} × {sat_b.name}</b> <br><sup style='color:#b8cfe0;'>⏱ {'T+' if base_t_min >= 0 else 'T'}{base_t_min} min &nbsp;|&nbsp; {base_t_utc} &nbsp;|&nbsp; Distance: {dists[0]:.1f} km</sup>"
 
     fig.update_layout(
         **DARK, height=680, margin=dict(l=0, r=0, t=80, b=10),
@@ -788,8 +788,8 @@ def fig_animated_conjunction(sat_a, sat_b, window_hrs=6, show_orbits=True, show_
                 buttons=[
                     dict(label="▶ 1x", method="animate", args=[[str(k) for k in range(n_frames)], dict(frame=dict(duration=frame_duration, redraw=True), transition=dict(duration=0), fromcurrent=True, mode="immediate")]),
                     dict(label="⏩ 2x", method="animate", args=[[str(k) for k in range(0, n_frames, 2)], dict(frame=dict(duration=frame_duration//2, redraw=True), transition=dict(duration=0), fromcurrent=True, mode="immediate")]),
-                    dict(label="⏸ DUR", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=True), transition=dict(duration=0), mode="immediate")]),
-                    dict(label="🎯 TCA'YA GİT", method="animate", args=[[str(tca_idx)], dict(frame=dict(duration=0, redraw=True), transition=dict(duration=0), mode="immediate")])])],
+                    dict(label="⏸ STOP", method="animate", args=[[None], dict(frame=dict(duration=0, redraw=True), transition=dict(duration=0), mode="immediate")]),
+                    dict(label="🎯 GO TO TCA", method="animate", args=[[str(tca_idx)], dict(frame=dict(duration=0, redraw=True), transition=dict(duration=0), mode="immediate")])])],
         sliders=[dict(steps=slider_steps, active=0, currentvalue=dict(prefix="⏱  ", font=dict(family="Space Mono", size=10, color="#4a6880")), pad=dict(t=64, b=0), len=0.92, x=0.04, bgcolor="#0c1018", bordercolor="#1a2740", tickcolor="#1a2740", font=dict(color="#4a6880", size=8))]
     )
     return fig, tca_idx, tca_dist, dists, anim_jd, tca_tt_val
@@ -1088,7 +1088,7 @@ with tab4:
     sat_a_name = c1.selectbox("🛰️ Satellite A", sat_names_ext, index=def_idx_a, key="live_sel_a")
     sat_b_name = c2.selectbox("🛰️ Satellite B", sat_names_ext, index=def_idx_b, key="live_sel_b")
 
-    # SAAT PROBLEMI ÇÖZÜLDÜ: Window hrs varsayılan olarak yan menüden geliyor.
+    # TIME PROBLEM SOLVED: Window hrs comes from sidebar by default.
     sim_hours = c3.slider("⏱️ Window (hrs)", 1, 48, window_hrs, key="live_window_hrs")
 
     with st.expander("⚙️ Display Options"):
@@ -1119,7 +1119,7 @@ with tab4:
             m2.metric("Min. Distance", f"{tca_dist:.3f} km")
             m3.metric("TCA @ T+", f"{tca_tplus} min")
             m4.metric("Risk Level", sev)
-            st.info("💡 Use the **[🎯 TCA'YA GİT]** button to jump directly to the closest approach! Hover over the red diamond at TCA for exact metrics.")
+            st.info("💡 Use the **[🎯 GO TO TCA]** button to jump directly to the closest approach! Hover over the red diamond at TCA for exact metrics.")
             st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": False})
 
             st.markdown("**📊 Distance Profile**")
