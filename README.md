@@ -19,7 +19,7 @@ The primary objective of this project is to implement, evaluate, and visualize i
     * **Role:** Lead Developer & Researcher 
     * **Department:** Space Sciences and Technologies
     * **Contact:** *altaycavuss@gmail.com*
-    * * **LinkedIn:** *www.linkedin.com/in/altaycavus*
+    * **LinkedIn:** *www.linkedin.com/in/altaycavus*
 * **Academic Advisor:** **Assoc. Prof. BURCU ÖZKARDEŞ**
     * **Role:** Project Supervisor / Consultant 
     * **Affiliation:** Department of Space Sciences and Technologies
