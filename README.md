@@ -153,7 +153,12 @@ streamlit run starweb-cara.py
 
 ## 📄 License
 
-This project is provided for educational and research purposes. Please refer to individual library licenses for dependency licensing information.
+MIT License © 2025 Altay Çavuş
+
+This project is open source and freely available for educational, research, and commercial use.
+See [LICENSE](LICENSE) for full terms.
+
+> **Dependencies** (Skyfield, Plotly, Streamlit, etc.) are distributed under their own respective licenses.
 
 ## 🤝 Contributing
 
