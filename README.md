@@ -1,6 +1,6 @@
 # 🌌 StarWeb-CARA: Conjunction Assessment and Collision Risk Analysis
 
-![StarWeb-CARA Interface](images/ui.png)
+![StarWeb-CARA Interface](ui.png)
 > *A comprehensive Streamlit-based web application for analyzing conjunction events and collision risks in Low Earth Orbit (LEO).*
 
 This system implements industry-standard algorithms for satellite collision probability assessment, including multiple Pc models, fragmentation analysis, and real-time cinematic 3D visualizations.
