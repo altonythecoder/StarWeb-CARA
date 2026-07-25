@@ -7,7 +7,7 @@ This system implements industry-standard algorithms for satellite collision prob
 
 ---
 
-[![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch-red?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=YOUR_YOUTUBE_LINK)
+[![Watch on YouTube](https://img.shields.io/badge/YouTube-Watch-red?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=P0G6nb2qoJs)
 
 ## 🎓 Academic Context & Credits
 
