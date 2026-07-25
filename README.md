@@ -168,6 +168,12 @@ This is an academic project. For questions, suggestions, or collaboration opport
 
 This system is provided for educational and research purposes only. Collision probability calculations are approximations and should not be used for operational collision avoidance decisions without proper validation and expert review. Always consult official conjunction assessment services for operational satellite operations.
 
+## 📜 License & Copyright
+
+**Copyright © 2026 Altay. All rights reserved.**
+
+This software and its source code are proprietary. Unauthorized copying, modification, distribution, or commercial use of this file, via any medium, is strictly prohibited.
+
 ## 📧 Contact
 
 For questions or support regarding this project, please contact the maintainers through the repository's issue tracker.
